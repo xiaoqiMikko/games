@@ -22,6 +22,7 @@ public final class V4Test {
         task1(gp);
         task3(gp);
         task2(gp);
+        task4(gp);
 
         System.out.println(SelfTest.fails == 0 ? "V4 全部通过" : ("V4 失败 " + SelfTest.fails + " 项"));
         System.exit(SelfTest.fails == 0 ? 0 : 1);
@@ -222,6 +223,59 @@ public final class V4Test {
         p.items[2] = 1;
         gp.useItem(2);
         check(gp.world.get(c + 1, r) == World.ORE + alien && gp.world.get(c - 1, r) == World.ORE + Mineral.FIRST_V4, "炸药炸不掉宝藏");
+        gp.respawn();
+    }
+
+    /** 在 depth 格深处挖一个小房间并把车放进去,返回车所在的列和行 */
+    static int[] room(GamePanel gp, int depth) {
+        gp.respawn();
+        int c = 20, r = World.SURFACE + depth;
+        for (int rr = r - 4; rr <= r + 4; rr++)
+            for (int cc = c - 6; cc <= c + 6; cc++) gp.world.set(cc, rr, World.DIRT);
+        gp.world.set(c, r, World.AIR);
+        gp.world.set(c, r - 1, World.AIR);
+        gp.p.x = c * T + 3;
+        gp.p.y = r * T + T - Player.H;
+        gp.p.fallStartY = gp.p.y;
+        gp.p.fuel = gp.p.maxFuel();
+        return new int[]{c, r};
+    }
+
+    static void task4(GamePanel gp) throws Exception {
+        Player p = gp.p;
+        // 钻头 Lv5(下标 4)钻不动岩石
+        setAll(p, 0);
+        p.level[Upgrades.DRILL] = 4;
+        int[] cr = room(gp, 80);
+        gp.world.set(cr[0], cr[1] + 1, World.ROCK);
+        gp.texts.clear();
+        gp.tryDigDown();
+        check(!p.digging, "铂金钻头钻不动岩石");
+        boolean hint = false;
+        for (GamePanel.FloatText t : gp.texts) hint |= t.s.contains("钻石级");
+        check(hint, "提示升级到钻石级钻头可以钻岩石");
+        // Lv6(下标 5)能钻
+        p.level[Upgrades.DRILL] = 5;
+        gp.rockMsgCooldown = 0;
+        gp.tryDigDown();
+        double expect = GamePanel.DIG_BASE * 3.0 * (1 + 81 / 250.0) / p.drillMul();
+        check(p.digging && Math.abs(p.digTime - expect) < 1e-6, "钻石级钻头能钻岩石,耗时 " + p.digTime);
+        p.digging = false;
+
+        // 探测器
+        setAll(p, 0);
+        cr = room(gp, 120);
+        gp.world.set(cr[0] + 2, cr[1], World.GAS);
+        gp.world.set(cr[0] - 2, cr[1] + 1, (byte) (World.ORE + 4));
+        check(gp.probeTargets() == 0, "没有探测器时什么都探不到");
+        p.level[Upgrades.PROBE] = 1;
+        check(gp.probeTargets() >= 2, "3 格探测器能探到旁边的瓦斯和金矿");
+        gp.world.set(cr[0] + 6, cr[1], World.GAS);
+        int near = gp.probeTargets();
+        p.level[Upgrades.PROBE] = 6;
+        check(gp.probeTargets() > near, "满级探测器看得更远");
+        gp.snapCamera();
+        shot(gp, "v4-06-probe");
         gp.respawn();
     }
 }

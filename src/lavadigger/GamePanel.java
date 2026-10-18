@@ -28,6 +28,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     static final double RELIEF_FUEL = 0.4;   // 救济油:补到油箱的 40%
     static final double LOW_FUEL = 0.2;
     static final double METERS_PER_ROW = 3;
+    static final int ROCK_DRILL_LEVEL = 5;   // 钻头升到第 6 档(钻石级)起能钻岩石
     static final double HEAT_START = 50;     // 150 米以下开始有地热
     static final double HEAT_GAIN = 2.5;     // 到最底层额外增加的油耗倍数(出厂散热器)
 
@@ -399,9 +400,10 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
             }
             return;
         }
-        if (!World.diggable(t)) {
+        boolean rockOk = t == World.ROCK && p.level[Upgrades.DRILL] >= ROCK_DRILL_LEVEL;
+        if (!World.diggable(t) && !rockOk) {
             if (rockMsgCooldown <= 0) {
-                String m = t == World.ROCK ? "岩石太硬,钻不动!(可以用炸药)"
+                String m = t == World.ROCK ? "岩石太硬,钻不动!(用炸药,或把钻头升到钻石级)"
                     : t == World.CONCRETE ? "这是商店的水泥地基" : "这里是基岩,再也挖不下去了";
                 addText(p.x + Player.W / 2.0, p.y - 6, m, new Color(255, 220, 150));
                 rockMsgCooldown = 1.5;
@@ -522,6 +524,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         p.hull = p.maxHull();
         particles.clear();
         state = State.PLAY;
+        centerMsgTimer = 0;
         snapCamera();
         save();
     }
@@ -789,6 +792,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         particles.clear();
         texts.clear();
         state = State.PLAY;
+        centerMsgTimer = 0;
         snapCamera();
         save();
         hasSave = SaveManager.exists();
@@ -977,6 +981,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         drawParticles(g, ox, oy);
         drawDarkness(g, ox, oy);
         drawOreEffects(g, ox, oy);
+        drawProbe(g, ox, oy);
         drawTexts(g, ox, oy);
 
         switch (state) {
@@ -1223,6 +1228,60 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
             }
         g.setClip(oc);
         Art.aa(g, false);
+    }
+
+    /** 探测器范围内能标出来的东西(矿、宝藏、瓦斯) */
+    boolean probeVisible(byte t) {
+        return t == World.GAS || t >= World.ORE;
+    }
+
+    int probeTargets() {
+        int n = 0, rad = p.probeRadius();
+        if (rad <= 0) return 0;
+        int pc = (int) Math.floor((p.x + Player.W / 2.0) / T), pr = (int) Math.floor((p.y + Player.H / 2.0) / T);
+        for (int r = pr - rad; r <= pr + rad; r++)
+            for (int c = pc - rad; c <= pc + rad; c++)
+                if ((c - pc) * (c - pc) + (r - pr) * (r - pr) <= rad * rad && r > World.SURFACE && probeVisible(world.get(c, r))) n++;
+        return n;
+    }
+
+    /** 探测器:在黑暗里标出范围内的矿(彩色框)和瓦斯(绿色感叹号),外加一圈慢慢扩散的扫描波 */
+    void drawProbe(Graphics2D g, int ox, int oy) {
+        int rad = p.probeRadius();
+        if (rad <= 0 || p.depthRows() < 1) return;
+        Art.aa(g, true);
+        double pcx = p.x + Player.W / 2.0, pcy = p.y + Player.H / 2.0;
+        double ph = (time * 0.5) % 1.0;
+        g.setStroke(new BasicStroke(1.5f));
+        g.setColor(new Color(120, 230, 255, (int) (70 * (1 - ph))));
+        double sr = ph * rad * T;
+        g.draw(new Ellipse2D.Double(pcx - ox - sr, pcy - oy - sr, sr * 2, sr * 2));
+        int pc = (int) Math.floor(pcx / T), pr = (int) Math.floor(pcy / T);
+        g.setFont(fontB(16));
+        for (int r = pr - rad; r <= pr + rad; r++)
+            for (int c = pc - rad; c <= pc + rad; c++) {
+                double d2 = (c - pc) * (c - pc) + (r - pr) * (r - pr);
+                if (d2 > rad * rad || r <= World.SURFACE) continue;
+                byte t = world.get(c, r);
+                if (!probeVisible(t)) continue;
+                int a = (int) (200 * (1 - 0.6 * Math.sqrt(d2) / rad));
+                int x = c * T - ox, y = r * T - oy;
+                if (t == World.GAS) {
+                    g.setColor(new Color(110, 255, 110, a));
+                    g.drawRoundRect(x + 4, y + 4, T - 8, T - 8, 8, 8);
+                    g.drawString("!", x + 13, y + 22);
+                } else {
+                    Mineral mi = Mineral.ALL[t - World.ORE];
+                    Color mc = brighten(mi.color);
+                    g.setColor(new Color(mc.getRed(), mc.getGreen(), mc.getBlue(), a));
+                    g.drawRoundRect(x + 3, y + 3, T - 6, T - 6, 6, 6);
+                    if (Mineral.isProtected(t - World.ORE)) {
+                        g.setColor(new Color(255, 215, 80, a));
+                        g.drawRoundRect(x + 1, y + 1, T - 2, T - 2, 8, 8);
+                    }
+                }
+            }
+        g.setStroke(new BasicStroke(1f));
     }
 
     double pulse(double speed, double seed) {

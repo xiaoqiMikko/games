@@ -50,6 +50,7 @@ final class World {
         double base;
         if (t >= ORE) base = Mineral.ALL[t - ORE].hardness();
         else if (t == LAVA) base = 1.25;
+        else if (t == ROCK) base = 3.0; // 只有钻石级以上的钻头能钻
         else base = 1.0;
         return base * (1 + d / 250.0);
     }
