@@ -159,6 +159,17 @@ public final class SelfTest {
         hold(gp, KeyEvent.VK_UP, 1);
         check(gp.p.fuel < f0, "地面起飞耗油");
         run(gp, 3);
+        // 油不多时:停在地面不报警,飞起来报警
+        gp.p.fuel = gp.p.maxFuel() * 0.12;
+        run(gp, 0.5);
+        check(gp.fuelAlarm() == 0, "低油但停在地面:不报警");
+        gp.keys[KeyEvent.VK_UP] = true;
+        run(gp, 0.4);
+        check(gp.fuelAlarm() > 0, "低油从地面飞起来:报警");
+        gp.keys[KeyEvent.VK_UP] = false;
+        run(gp, 3);
+        check(gp.fuelAlarm() == 0, "落回地面:警报解除");
+        gp.p.fuel = gp.p.maxFuel();
 
         // 右边两家店的画面
         gp.p.x = 36 * World.T;

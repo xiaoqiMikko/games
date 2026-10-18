@@ -242,6 +242,8 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     /** 0 = 正常, 1 = 燃油不足(该往回走了), 2 = 危险(只剩勉强够回去的油) */
     int fuelAlarm() {
         double ff = p.fuel / p.maxFuel();
+        // 已经安全停在地面上:地面开车不耗油,不用再报警;一旦离地飞起来或钻下去就恢复报警
+        if (p.onGround && Math.abs(p.depthRows()) < 0.5 && !p.digging) return 0;
         boolean under = p.depthRows() > 0.5;
         double ret = returnFuel();
         if (ff < 0.1 || (under && p.fuel < ret * 1.1 + 0.2)) return 2;
