@@ -390,8 +390,8 @@ public final class SelfTest {
         // 默认位置:程序所在文件夹/存档/熔岩矿车存档.properties
         File def = SaveManager.file();
         System.out.println("默认存档位置: " + def.getAbsolutePath());
-        check(def.getName().equals("熔岩矿车存档.properties") && def.getParentFile().getName().equals("存档")
-            && def.getParentFile().getParentFile().equals(SaveManager.gameDir()), "存档默认放在游戏文件夹/存档/");
+        check(def.getName().equals("lava-digger-save.properties") && def.getParentFile().getName().equals("save")
+            && def.getParentFile().getParentFile().equals(SaveManager.gameDir()), "存档默认放在游戏文件夹/save/");
         File saveDir = new File(out, "save");
         SaveManager.dirOverride = saveDir;
         File nf = SaveManager.file();
@@ -408,6 +408,13 @@ public final class SelfTest {
         World wm = new World();
         Player pm = new Player();
         check(SaveManager.load(wm, pm) && pm.money == 777, "搬过来的存档能读");
+        // 上一版中文位置(游戏文件夹/存档/熔岩矿车存档.properties)也会被搬过来
+        File cn = new File(new File(saveDir.getParentFile(), "存档"), "熔岩矿车存档.properties");
+        cn.getParentFile().mkdirs();
+        java.nio.file.Files.copy(nf.toPath(), cn.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        nf.delete();
+        SaveManager.migrateLegacy();
+        check(nf.isFile() && !cn.exists() && !cn.getParentFile().exists(), "中文存档文件夹自动搬到 save/ 并删除");
         gp.p.money = 12345;
         gp.p.level[Upgrades.DRILL] = 3;
         SaveManager.save(gp.world, gp.p);
