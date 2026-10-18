@@ -10,7 +10,7 @@ final class Sfx {
     private static final float RATE = 22050f;
     static boolean enabled = true;
 
-    private Clip beep, boom, cash, buy, error, pick, hit;
+    private Clip beep, boom, cash, buy, error, pick, hit, rumble;
     private boolean ok;
     private final ExecutorService exec = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "sfx");
@@ -28,6 +28,7 @@ final class Sfx {
             error = make(tone(180, 0.18, 0.4));
             pick = make(tone(1500, 0.05, 0.22));
             hit = make(noise(0.25, 0.6));
+            rumble = make(rumbleWave(1.6, 0.8));
             ok = true;
         } catch (Throwable t) {
             ok = false;
@@ -41,6 +42,7 @@ final class Sfx {
     void error() { play(error); }
     void pick() { play(pick); }
     void hit() { play(hit); }
+    void rumble() { play(rumble); }
 
     private void play(final Clip c) {
         if (!ok || c == null) return;
@@ -80,6 +82,22 @@ final class Sfx {
             double t = i / (double) n;
             double env = Math.sin(Math.PI * t);
             put(b, i, Math.sin(2 * Math.PI * freq * i / RATE) * vol * env);
+        }
+        return b;
+    }
+
+    /** 地震的低沉隆隆声:强低通的噪声,慢慢起来再慢慢消失 */
+    private static byte[] rumbleWave(double dur, double vol) {
+        int n = (int) (RATE * dur);
+        byte[] b = new byte[n * 2];
+        Random r = new Random(11);
+        double lp = 0, lp2 = 0;
+        for (int i = 0; i < n; i++) {
+            double t = i / (double) n;
+            lp += (r.nextDouble() * 2 - 1 - lp) * 0.04;
+            lp2 += (lp - lp2) * 0.05;
+            double env = Math.sin(Math.PI * t) * (0.7 + 0.3 * Math.sin(t * 40));
+            put(b, i, lp2 * vol * env * 9);
         }
         return b;
     }

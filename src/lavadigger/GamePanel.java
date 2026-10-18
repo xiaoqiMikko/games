@@ -28,6 +28,8 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     static final double RELIEF_FUEL = 0.4;   // 救济油:补到油箱的 40%
     static final double LOW_FUEL = 0.2;
     static final double METERS_PER_ROW = 3;
+    static final double QUAKE_ROWS = 100;    // 300 米以下会地震
+    static final double QUAKE_MIN = 60, QUAKE_MAX = 120; // 两次地震的间隔(秒)
     static final int ROCK_DRILL_LEVEL = 5;   // 钻头升到第 6 档(钻石级)起能钻岩石
     static final double HEAT_START = 50;     // 150 米以下开始有地热
     static final double HEAT_GAIN = 2.5;     // 到最底层额外增加的油耗倍数(出厂散热器)
@@ -50,6 +52,14 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     final BufferedImage back = new BufferedImage(VW, VH, BufferedImage.TYPE_INT_RGB);
 
     double camX, camY, shake, time;
+    // 地震落石
+    static final class Rock {
+        double x, y, vy, warn, size;
+        int quake;
+    }
+    final List<Rock> rocks = new ArrayList<>();
+    double quakeTimer = QUAKE_MIN;
+    int quakeCount, rocksSpawned, lastRockHit;
     int menuSel, shopType = -1;
     String shopMsg = "";
     Color shopMsgColor = Color.WHITE;
@@ -199,6 +209,8 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         if (depth > p.maxDepth) p.maxDepth = depth;
         if (p.hull < p.maxHull() * 0.3 && fx.nextDouble() < dt * 6) spawnSmoke(p.x + 6, p.y, false);
 
+        updateQuake(dt);
+
         int alarm = fuelAlarm();
         if (state == State.PLAY && alarm > 0) {
             beepTimer -= dt;
@@ -266,6 +278,88 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         for (int d = 0; d < whole; d++) sum += perRow * heat(d + 0.5);
         sum += perRow * (rows - whole) * heat(rows);
         return sum;
+    }
+
+    /** 深处每隔一阵地震一次;碎石只是粒子实体,落地就碎,从不写进地图 */
+    void updateQuake(double dt) {
+        if (p.depthRows() >= QUAKE_ROWS && !p.digging) {
+            quakeTimer -= dt;
+            if (quakeTimer <= 0) triggerQuake();
+        }
+        double dmg = 2 + Math.max(0, p.depthRows()) / 80.0;
+        for (int i = rocks.size() - 1; i >= 0; i--) {
+            Rock k = rocks.get(i);
+            if (k.warn > 0) {
+                k.warn -= dt;
+                if (fx.nextDouble() < dt * 25) {
+                    Particle q = part(k.x + (fx.nextDouble() - 0.5) * 16, k.y, (fx.nextDouble() - 0.5) * 10, 20 + fx.nextDouble() * 30,
+                        0.8, 2, new Color(170, 150, 130), true);
+                    q.drag = 0.97;
+                }
+                continue;
+            }
+            k.vy = Math.min(MAX_FALL, k.vy + GRAVITY * dt);
+            k.y += k.vy * dt;
+            boolean hitCar = k.x + k.size > p.x && k.x - k.size < p.x + Player.W && k.y + k.size > p.y && k.y - k.size < p.y + Player.H;
+            boolean hitGround = world.solid((int) Math.floor(k.x / T), (int) Math.floor((k.y + k.size) / T));
+            if (hitCar || hitGround) {
+                for (int j = 0; j < 10; j++) {
+                    double a = fx.nextDouble() * Math.PI;
+                    part(k.x, k.y, Math.cos(a) * 60, -Math.sin(a) * 80, 0.6, 2 + fx.nextInt(2), new Color(130, 120, 115), true);
+                }
+                rocks.remove(i);
+                if (hitCar && k.quake != lastRockHit) { // 同一次地震只扣一次血,窄竖井里躲不开也不至于被连砸
+                    lastRockHit = k.quake;
+                    damage(dmg, "落石");
+                } else if (hitCar) shake = Math.max(shake, 4);
+                if (state != State.PLAY) return;
+            }
+        }
+    }
+
+    /** 地震:震屏 + 隆隆声;车头顶上有空通道时,从通道顶部掉下 1~3 块碎石 */
+    void triggerQuake() {
+        quakeTimer = QUAKE_MIN + fx.nextDouble() * (QUAKE_MAX - QUAKE_MIN);
+        quakeCount++;
+        shake = Math.max(shake, 6);
+        sfx.rumble();
+        int c = (int) Math.floor((p.x + Player.W / 2.0) / T);
+        int r = (int) Math.floor(p.y / T);
+        int top = r;
+        while (top - 1 >= World.SURFACE && r - (top - 1) <= 6 && !world.solid(c, top - 1)) top--;
+        if (top >= r) return; // 头顶紧贴着土,没地方掉东西
+        int n = 1 + fx.nextInt(3);
+        for (int i = 0; i < n; i++) {
+            Rock k = new Rock();
+            k.size = 4 + fx.nextDouble() * 3;
+            k.x = c * T + T / 2.0 + (fx.nextDouble() - 0.5) * 18;
+            k.y = top * T + k.size;
+            k.warn = 1.0 + i * 0.25;
+            k.quake = quakeCount;
+            rocks.add(k);
+            rocksSpawned++;
+        }
+        addText(p.x + Player.W / 2.0, p.y - 10, "地震!小心头顶的落石", new Color(255, 200, 120));
+    }
+
+    void drawRocks(Graphics2D g, int ox, int oy) {
+        Art.aa(g, true);
+        for (Rock k : rocks) {
+            if (k.warn > 0) continue;
+            double x = k.x - ox, y = k.y - oy, s = k.size;
+            Path2D.Double sh = new Path2D.Double();
+            sh.moveTo(x - s, y - s * 0.3);
+            sh.lineTo(x - s * 0.4, y - s);
+            sh.lineTo(x + s * 0.7, y - s * 0.8);
+            sh.lineTo(x + s, y + s * 0.2);
+            sh.lineTo(x + s * 0.3, y + s);
+            sh.lineTo(x - s * 0.7, y + s * 0.7);
+            sh.closePath();
+            g.setColor(new Color(120, 112, 108));
+            g.fill(sh);
+            g.setColor(new Color(60, 55, 52));
+            g.draw(sh);
+        }
     }
 
     /** 0 = 正常, 1 = 燃油不足(该往回走了), 2 = 危险(只剩勉强够回去的油) */
@@ -523,6 +617,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         p.fuel = p.maxFuel();
         p.hull = p.maxHull();
         particles.clear();
+        rocks.clear();
         state = State.PLAY;
         centerMsgTimer = 0;
         snapCamera();
@@ -791,6 +886,8 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         p.reset();
         particles.clear();
         texts.clear();
+        rocks.clear();
+        quakeTimer = QUAKE_MIN;
         state = State.PLAY;
         centerMsgTimer = 0;
         snapCamera();
@@ -982,6 +1079,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         drawDarkness(g, ox, oy);
         drawOreEffects(g, ox, oy);
         drawProbe(g, ox, oy);
+        drawRocks(g, ox, oy);
         drawTexts(g, ox, oy);
 
         switch (state) {

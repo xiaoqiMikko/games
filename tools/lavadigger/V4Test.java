@@ -23,6 +23,7 @@ public final class V4Test {
         task3(gp);
         task2(gp);
         task4(gp);
+        task5(gp);
 
         System.out.println(SelfTest.fails == 0 ? "V4 全部通过" : ("V4 失败 " + SelfTest.fails + " 项"));
         System.exit(SelfTest.fails == 0 ? 0 : 1);
@@ -238,6 +239,7 @@ public final class V4Test {
         gp.p.y = r * T + T - Player.H;
         gp.p.fallStartY = gp.p.y;
         gp.p.fuel = gp.p.maxFuel();
+        gp.snapCamera();
         return new int[]{c, r};
     }
 
@@ -277,5 +279,48 @@ public final class V4Test {
         gp.snapCamera();
         shot(gp, "v4-06-probe");
         gp.respawn();
+    }
+
+    static void task5(GamePanel gp) throws Exception {
+        Player p = gp.p;
+        setAll(p, 3);
+        // 车停在一条竖井底部(井上方 8 格是空的)
+        int[] cr = room(gp, 200);
+        for (int rr = cr[1] - 8; rr <= cr[1]; rr++) gp.world.set(cr[0], rr, World.AIR);
+        gp.world.set(cr[0], cr[1] + 1, World.ROCK);
+        byte[] before = gp.world.tiles.clone();
+        double hull0 = p.hull;
+        gp.triggerQuake();
+        check(gp.rocks.size() >= 1, "地震时竖井顶上掉下碎石");
+        check(gp.rocks.get(0).warn > 0, "碎石落下前先掉灰尘预警");
+        run(gp, 0.6);
+        shot(gp, "v4-07-quake-warn");
+        run(gp, 3);
+        check(p.hull < hull0, "碎石砸中车会扣车身");
+        double dmg = hull0 - p.hull;
+        check(Math.abs(dmg - (2 + 201 / 80.0)) < 0.2, "同一次地震最多扣一次 2+深度/80,实际 " + dmg);
+        // 50 次地震后地图不变(碎石落地就碎,不会堵路)
+        for (int i = 0; i < 50; i++) {
+            p.hull = p.maxHull();
+            gp.triggerQuake();
+            run(gp, 2.5);
+        }
+        check(java.util.Arrays.equals(before, gp.world.tiles), "落石从不改变地图");
+        check(gp.rocks.isEmpty(), "碎石全部碎掉");
+
+        // 200 米深处 5 分钟都不会地震
+        cr = room(gp, 66);
+        gp.world.set(cr[0], cr[1] + 1, World.ROCK);
+        p.fuel = p.maxFuel();
+        int q0 = gp.quakeCount;
+        for (int i = 0; i < 30; i++) { p.fuel = p.maxFuel(); run(gp, 10); }
+        check(gp.quakeCount == q0, "300 米以上不会地震");
+        // 300 米以下 5 分钟内会地震
+        cr = room(gp, 120);
+        gp.world.set(cr[0], cr[1] + 1, World.ROCK);
+        for (int i = 0; i < 30; i++) { p.fuel = p.maxFuel(); p.hull = p.maxHull(); run(gp, 10); }
+        check(gp.quakeCount > q0, "300 米以下会地震,5 分钟内 " + (gp.quakeCount - q0) + " 次");
+        gp.respawn();
+        check(gp.rocks.isEmpty(), "重生时清掉碎石");
     }
 }
