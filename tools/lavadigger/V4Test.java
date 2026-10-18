@@ -21,6 +21,7 @@ public final class V4Test {
 
         task1(gp);
         task3(gp);
+        task2(gp);
 
         System.out.println(SelfTest.fails == 0 ? "V4 全部通过" : ("V4 失败 " + SelfTest.fails + " 项"));
         System.exit(SelfTest.fails == 0 ? 0 : 1);
@@ -179,5 +180,48 @@ public final class V4Test {
         }
         g.dispose();
         javax.imageio.ImageIO.write(atlas, "png", new File(SelfTest.out, "v4-04-treasure-atlas.png"));
+    }
+
+    /** 把地图里第一个 m 挖出来(变成泥土),模拟它进了货舱 */
+    static void takeOne(GamePanel gp, int m) {
+        for (int i = 0; i < gp.world.tiles.length; i++)
+            if (gp.world.tiles[i] == World.ORE + m) {
+                gp.world.tiles[i] = World.DIRT;
+                gp.p.cargo[m]++;
+                return;
+            }
+    }
+
+    static void task2(GamePanel gp) throws Exception {
+        gp.newGame(42);
+        Player p = gp.p;
+        int alien = Mineral.FIRST_V4 + 3;
+        takeOne(gp, Mineral.HEART);
+        takeOne(gp, alien);
+        check(countTile(gp.world, Mineral.HEART) == 5 && countTile(gp.world, alien) == 1, "准备:心和外星残骸各一个在货舱");
+        gp.explode("测试");
+        run(gp, 3);
+        check(gp.state == GamePanel.State.REPORT, "爆炸后进入结算");
+        check(countTile(gp.world, Mineral.HEART) == 6, "爆炸丢失的熔岩之心回到地图,共 " + countTile(gp.world, Mineral.HEART));
+        check(countTile(gp.world, alien) == 2, "爆炸丢失的宝藏回到地图");
+        boolean said = false;
+        for (String line : gp.report) said |= line.contains("回到了地底深处");
+        check(said, "结算报告说明宝物回到地底");
+        check(gp.heartGoal() == World.HEARTS, "通关目标恒为 6 颗");
+        shot(gp, "v4-05-report-heart");
+        gp.respawn();
+
+        // 炸药炸不掉宝藏
+        int c = 20, r = World.SURFACE + 60;
+        gp.world.set(c + 1, r, (byte) (World.ORE + alien));
+        gp.world.set(c - 1, r, (byte) (World.ORE + Mineral.FIRST_V4));
+        gp.world.set(c, r, World.AIR);
+        p.x = c * T + 3;
+        p.y = r * T + T - Player.H;
+        p.fallStartY = p.y;
+        p.items[2] = 1;
+        gp.useItem(2);
+        check(gp.world.get(c + 1, r) == World.ORE + alien && gp.world.get(c - 1, r) == World.ORE + Mineral.FIRST_V4, "炸药炸不掉宝藏");
+        gp.respawn();
     }
 }

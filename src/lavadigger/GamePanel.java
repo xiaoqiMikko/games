@@ -498,10 +498,19 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         int fee = (int) (p.money * DEATH_FEE);
         p.deaths++;
         p.money -= fee;
+        // 熔岩之心和宝藏不会永久丢失:放回它原来的深度
+        StringBuilder back = new StringBuilder();
+        for (int m = 0; m < p.cargo.length; m++) {
+            if (!Mineral.isProtected(m) || p.cargo[m] == 0) continue;
+            for (int k = 0; k < p.cargo[m]; k++) world.placeProtected(m, fx);
+            if (back.length() > 0) back.append("、");
+            back.append(Mineral.ALL[m].name);
+        }
         java.util.Arrays.fill(p.cargo, 0);
         report.clear();
         report.add("原因:" + deathReason);
         report.add("丢失货物:" + lost + " 件(价值 $" + fmtMoney(lostVal) + ")");
+        if (back.length() > 0) report.add(back + " 没有毁掉,回到了地底深处。");
         report.add("救援费:$" + fmtMoney(fee) + "(现金的 25%)");
         report.add("救援队已把新车送到地面,油箱加满。");
         state = State.REPORT;
@@ -546,7 +555,8 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 for (int dr = -1; dr <= 1; dr++)
                     for (int dc = -1; dc <= 1; dc++) {
                         byte t = world.get(c + dc, r + dr);
-                        if (t != World.BEDROCK && t != World.CONCRETE && t != World.ORE + Mineral.HEART && r + dr >= World.SURFACE)
+                        boolean keep = t >= World.ORE && Mineral.isProtected(t - World.ORE);
+                        if (t != World.BEDROCK && t != World.CONCRETE && !keep && r + dr >= World.SURFACE)
                             world.set(c + dc, r + dr, World.AIR);
                     }
                 spawnExplosion(cx, cy, 90);
@@ -737,11 +747,9 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         }
     }
 
-    /** 通关目标:全图熔岩之心总数(地图里剩的 + 已卖出 + 货舱里的) */
+    /** 通关目标:卖出全部熔岩之心(爆炸丢失的会回到地底,所以总数不变) */
     int heartGoal() {
-        int n = p.hearts + p.cargo[Mineral.HEART];
-        for (byte t : world.tiles) if (t == World.ORE + Mineral.HEART) n++;
-        return n;
+        return World.HEARTS;
     }
 
     void buyUpgrade(int k) {
