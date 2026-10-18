@@ -25,7 +25,11 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     static final double LOW_FUEL = 0.2;
     static final double METERS_PER_ROW = 3;
 
-    enum State { TITLE, PLAY, SHOP, PAUSE, EXPLODING, REPORT }
+    enum State { TITLE, PLAY, SHOP, PAUSE, EXPLODING, REPORT, HELP }
+
+    // 游戏说明页
+    int helpPage;
+    State helpReturn = State.TITLE;
 
     State state = State.TITLE;
     final World world = new World();
@@ -811,6 +815,10 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 drawHud(g);
                 drawPause(g);
                 break;
+            case HELP:
+                if (helpReturn != State.TITLE) drawHud(g);
+                drawHelp(g);
+                break;
             case REPORT:
                 drawHud(g);
                 drawReport(g);
@@ -1166,7 +1174,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         }
         // 底部按键提示
         g.setFont(font(12));
-        String hint = "←→ 移动   ↑ 飞行   ↓ 向下钻   贴墙按←→ 横向钻   回车 进店   F/R/X/T 用道具   Esc 菜单";
+        String hint = "←→ 移动   ↑ 飞行   ↓ 向下钻   贴墙按←→ 横向钻   回车 进店   F/R/X/T 用道具   Esc 菜单/说明";
         g.setColor(new Color(0, 0, 0, 120));
         g.fillRect(0, VH - 22, VW, 22);
         g.setColor(new Color(230, 230, 230, 200));
@@ -1253,7 +1261,194 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         }
     }
 
-    static final String[] PAUSE_ITEMS = {"继续游戏", "保存游戏", "保存并回到标题"};
+    static final String[] PAUSE_ITEMS = {"继续游戏", "游戏说明", "保存游戏", "保存并回到标题"};
+
+    void openHelp(State back) {
+        helpReturn = back;
+        helpPage = 0;
+        state = State.HELP;
+    }
+
+    void closeHelp() {
+        state = helpReturn;
+        menuSel = 0;
+    }
+
+    static final String[] HELP_TITLES = {"操作", "怎么玩", "矿石价目表", "危险", "商店与升级"};
+
+    /** 说明页内容;"#"开头的行是小标题 */
+    String[] helpLines(int page) {
+        switch (page) {
+            case 0:
+                return new String[]{
+                    "#开车",
+                    "← →  (或 A D)    左右行驶",
+                    "↑    (或 W)      喷气往上飞(很费油)",
+                    "↓    (或 S)      向下钻",
+                    "贴着墙按住 ← / →  横着钻(不能往上钻)",
+                    "#地面上",
+                    "停在商店门口按 回车(或 E)  进店",
+                    "#道具(先在道具店买)",
+                    "F 备用油桶    R 修理包    X 炸药    T 紧急传送",
+                    "#其它",
+                    "Esc  暂停 / 存档 / 看说明        窗口可以拉大、最大化",
+                };
+            case 1:
+                return new String[]{
+                    "#一趟的流程",
+                    "1. 在地面加满油,从空地往下钻",
+                    "2. 挖到的矿自动装进货舱(货舱满了再挖到的矿会丢掉)",
+                    "3. 看着油量,在油烧光之前飞回地面",
+                    "4. 去「矿石收购站」把矿卖掉换钱",
+                    "5. 去「改装厂」升级,再去「加油站」加油修车,继续往下挖",
+                    "#诀窍",
+                    "越深的矿越值钱,但往回飞的路也越长 —— 算好来回的油",
+                    "油量低于 20% 会报警、屏幕闪红,低于 10% 会急促报警",
+                    "往上飞比往下钻省时间,但飞的时候也一直在烧油",
+                    "地底最深处藏着 6 颗「熔岩之心」,一颗值 $30,000",
+                };
+            case 3:
+                return new String[]{
+                    "#燃油耗尽 → 车会爆炸!",
+                    "爆炸后:这一趟的货全部丢失,并扣掉现金的 25% 作为救援费",
+                    "救援队会把新车送回地面,油加满、车修好",
+                    "#岩石(灰色方块)",
+                    "钻不动,只能绕开,或者用炸药炸掉",
+                    "#熔岩(橙红色)",
+                    "钻进去会被烧伤,越深伤害越高;升级「散热器」可以减伤",
+                    "#瓦斯(看起来像普通泥土,细看有淡绿色斑点)",
+                    "一挖就爆炸,扣车身并炸开周围的土",
+                    "#摔落",
+                    "从高处掉下来速度太快会摔伤;车身归零同样会爆炸",
+                };
+            default:
+                return new String[0];
+        }
+    }
+
+    void drawHelp(Graphics2D g) {
+        int x = 110, y = 60, w = 740, h = 530;
+        panel(g, x, y, w, h);
+        g.setFont(fontB(26));
+        g.setColor(new Color(255, 200, 80));
+        g.drawString("游戏说明", x + 28, y + 46);
+        // 页签
+        g.setFont(fontB(15));
+        int tx = x + 170;
+        for (int i = 0; i < HELP_TITLES.length; i++) {
+            String s = HELP_TITLES[i];
+            int sw = g.getFontMetrics().stringWidth(s) + 20;
+            if (i == helpPage) {
+                g.setColor(new Color(255, 190, 70));
+                g.fillRoundRect(tx, y + 24, sw, 28, 8, 8);
+                g.setColor(new Color(30, 20, 10));
+            } else {
+                g.setColor(new Color(200, 200, 200));
+            }
+            g.drawString(s, tx + 10, y + 44);
+            tx += sw + 8;
+        }
+        g.setColor(new Color(255, 255, 255, 50));
+        g.drawLine(x + 20, y + 66, x + w - 20, y + 66);
+
+        int ly = y + 100;
+        if (helpPage == 2) drawMineralTable(g, x + 36, ly);
+        else if (helpPage == 4) drawShopHelp(g, x + 36, ly);
+        else {
+            for (String line : helpLines(helpPage)) {
+                if (line.startsWith("#")) {
+                    ly += 6;
+                    g.setFont(fontB(17));
+                    g.setColor(new Color(255, 200, 80));
+                    g.drawString(line.substring(1), x + 36, ly);
+                } else {
+                    g.setFont(font(16));
+                    g.setColor(Color.WHITE);
+                    g.drawString(line, x + 52, ly);
+                }
+                ly += 32;
+            }
+        }
+        g.setFont(font(13));
+        g.setColor(new Color(150, 150, 150));
+        g.drawString("← → 翻页 (" + (helpPage + 1) + "/" + HELP_TITLES.length + ")      Esc / 回车 返回", x + 28, y + h - 20);
+    }
+
+    void drawMineralTable(Graphics2D g, int x, int y) {
+        g.setFont(fontB(15));
+        g.setColor(new Color(255, 200, 80));
+        g.drawString("矿石", x + 40, y);
+        g.drawString("单价", x + 200, y);
+        g.drawString("大约从多深开始出现", x + 340, y);
+        y += 34;
+        for (int i = 0; i < Mineral.ALL.length; i++) {
+            Mineral m = Mineral.ALL[i];
+            int b = Textures.band(World.SURFACE + Math.max(1, m.minDepth));
+            g.drawImage(tex.ore[b][i][0], x, y - 22, 28, 28, null);
+            g.setFont(fontB(16));
+            g.setColor(Color.WHITE);
+            g.drawString(m.name, x + 40, y);
+            g.setColor(new Color(255, 214, 70));
+            g.drawString("$" + fmtMoney(m.value), x + 200, y);
+            g.setFont(font(15));
+            g.setColor(new Color(210, 210, 210));
+            String d = i == Mineral.HEART ? "最底部附近,全图只有几颗,周围全是熔岩"
+                : Math.round(m.minDepth * METERS_PER_ROW) + " 米以下,约 " + Math.round(m.peakDepth * METERS_PER_ROW) + " 米最多";
+            g.drawString(d, x + 340, y);
+            y += 38;
+        }
+    }
+
+    void drawShopHelp(Graphics2D g, int x, int y) {
+        String[] shops = {
+            "加油站:加油 $2/升,修车 $12/点(钱不够会尽量多加)",
+            "矿石收购站:把货舱里的矿全部卖掉",
+            "改装厂:升级下面 6 种部件,每种 7 级,越往后越贵",
+            "道具店:买消耗道具,在地下按对应键使用",
+        };
+        g.setFont(fontB(17));
+        g.setColor(new Color(255, 200, 80));
+        g.drawString("商店", x, y);
+        y += 26;
+        g.setFont(font(15));
+        g.setColor(Color.WHITE);
+        for (String s : shops) {
+            g.drawString(s, x + 16, y);
+            y += 22;
+        }
+        y += 6;
+        g.setFont(fontB(17));
+        g.setColor(new Color(255, 200, 80));
+        g.drawString("部件(出厂 → 满级)", x, y);
+        y += 26;
+        for (int k = 0; k < Upgrades.KINDS; k++) {
+            g.setFont(fontB(15));
+            g.setColor(Color.WHITE);
+            g.drawString(Upgrades.NAMES[k], x + 16, y);
+            g.setFont(font(14));
+            g.setColor(new Color(150, 220, 255));
+            g.drawString(Upgrades.fmt(k, 0) + " → " + Upgrades.fmt(k, Upgrades.TIERS - 1), x + 86, y);
+            g.setColor(new Color(210, 210, 210));
+            g.drawString(Upgrades.DESC[k], x + 290, y);
+            y += 21;
+        }
+        y += 6;
+        g.setFont(fontB(17));
+        g.setColor(new Color(255, 200, 80));
+        g.drawString("道具", x, y);
+        y += 26;
+        for (int i = 0; i < Upgrades.ITEM_NAMES.length; i++) {
+            g.setFont(fontB(15));
+            g.setColor(Color.WHITE);
+            g.drawString(Upgrades.ITEM_KEYS[i] + "  " + Upgrades.ITEM_NAMES[i], x + 16, y);
+            g.setFont(font(14));
+            g.setColor(new Color(255, 214, 70));
+            g.drawString("$" + fmtMoney(Upgrades.ITEM_PRICES[i]), x + 140, y);
+            g.setColor(new Color(210, 210, 210));
+            g.drawString(Upgrades.ITEM_DESC[i], x + 220, y);
+            y += 21;
+        }
+    }
 
     void drawPause(Graphics2D g) {
         int x = 300, y = 170, w = 360, h = 300;
@@ -1292,8 +1487,8 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     }
 
     String[] titleItems() {
-        if (hasSave) return new String[]{"继续游戏", confirmNew ? "确定要覆盖存档吗?再按一次回车" : "新游戏", "退出"};
-        return new String[]{"开始游戏", "退出"};
+        if (hasSave) return new String[]{"继续游戏", confirmNew ? "确定要覆盖存档吗?再按一次回车" : "新游戏", "游戏说明", "退出"};
+        return new String[]{"开始游戏", "游戏说明", "退出"};
     }
 
     void drawTitle(Graphics2D g) {
@@ -1402,7 +1597,8 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 else if (esc) state = State.PLAY;
                 else if (ok && !repeat) {
                     if (menuSel == 0) state = State.PLAY;
-                    else if (menuSel == 1) {
+                    else if (menuSel == 1) openHelp(State.PAUSE);
+                    else if (menuSel == 2) {
                         save();
                         msg("已保存", new Color(120, 255, 120));
                     } else {
@@ -1416,6 +1612,14 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
             case REPORT:
                 if (ok && !repeat) respawn();
                 break;
+            case HELP: {
+                boolean leftK = k == KeyEvent.VK_LEFT || k == KeyEvent.VK_A;
+                boolean rightK = k == KeyEvent.VK_RIGHT || k == KeyEvent.VK_D;
+                if (leftK || upK) helpPage = (helpPage + HELP_TITLES.length - 1) % HELP_TITLES.length;
+                else if (rightK || downK) helpPage = (helpPage + 1) % HELP_TITLES.length;
+                else if ((ok || esc) && !repeat) closeHelp();
+                break;
+            }
             default:
         }
     }
@@ -1430,10 +1634,15 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 else {
                     confirmNew = false;
                     newGame(System.nanoTime());
+                    openHelp(State.PLAY);
                 }
-            } else exitGame();
+            } else if (i == 2) openHelp(State.TITLE);
+            else exitGame();
         } else {
-            if (i == 0) newGame(System.nanoTime());
+            if (i == 0) {
+                newGame(System.nanoTime());
+                openHelp(State.PLAY);
+            } else if (i == 1) openHelp(State.TITLE);
             else exitGame();
         }
     }

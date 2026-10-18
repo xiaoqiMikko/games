@@ -18,6 +18,13 @@ public final class SelfTest {
         Sfx.enabled = false;
         GamePanel gp = new GamePanel();
         shot(gp, "01-title");
+        gp.openHelp(GamePanel.State.TITLE);
+        for (int i = 0; i < GamePanel.HELP_TITLES.length; i++) {
+            gp.helpPage = i;
+            shot(gp, "00-help-" + i);
+        }
+        gp.closeHelp();
+        check(gp.state == GamePanel.State.TITLE, "说明页返回标题");
 
         gp.newGame(42);
         check(gp.state == GamePanel.State.PLAY, "新游戏进入 PLAY");
