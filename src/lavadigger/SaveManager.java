@@ -101,6 +101,9 @@ final class SaveManager {
         pr.setProperty("totalEarned", Long.toString(p.totalEarned));
         pr.setProperty("playTime", Double.toString(p.playTime));
         pr.setProperty("won", Boolean.toString(p.won));
+        pr.setProperty("milestones", Integer.toString(p.milestones));
+        pr.setProperty("tips", Integer.toString(p.tips));
+        pr.setProperty("muted", Boolean.toString(Sfx.muted));
         File f = file();
         f.getParentFile().mkdirs();
         File tmp = new File(f.getPath() + ".tmp");
@@ -142,6 +145,10 @@ final class SaveManager {
             p.totalEarned = Long.parseLong(pr.getProperty("totalEarned", "0"));
             p.playTime = Double.parseDouble(pr.getProperty("playTime", "0"));
             p.won = Boolean.parseBoolean(pr.getProperty("won", "false"));
+            p.milestones = Integer.parseInt(pr.getProperty("milestones", "0"));
+            p.tips = Integer.parseInt(pr.getProperty("tips", "0"));
+            Sfx.muted = Boolean.parseBoolean(pr.getProperty("muted", "false"));
+            w.markDugFromSeed();
             p.vx = p.vy = 0;
             p.fallStartY = p.y; // 读档后从当前位置重新计算下落高度
             p.digging = false;

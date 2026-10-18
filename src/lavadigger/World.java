@@ -16,6 +16,21 @@ final class World {
 
     byte[] tiles = new byte[COLS * ROWS];
     long seed;
+    /** 玩家挖开的格子(天然空洞不算),给小地图用;mapVersion 每次改动加 1 */
+    boolean[] dug = new boolean[COLS * ROWS];
+    int mapVersion;
+
+    boolean isDug(int c, int r) {
+        return c >= 0 && c < COLS && r >= 0 && r < ROWS && dug[r * COLS + c];
+    }
+
+    /** 读档后:按种子重新生成原始地图,对比出哪些格子是玩家挖开的 */
+    void markDugFromSeed() {
+        World orig = new World();
+        orig.generate(seed);
+        for (int i = 0; i < tiles.length; i++) dug[i] = tiles[i] == AIR && orig.tiles[i] != AIR;
+        mapVersion++;
+    }
 
     byte get(int c, int r) {
         if (c < 0 || c >= COLS || r < 0 || r >= ROWS) return r < 0 ? AIR : BEDROCK;
@@ -25,6 +40,8 @@ final class World {
     void set(int c, int r, byte t) {
         if (c < 0 || c >= COLS || r < 0 || r >= ROWS) return;
         tiles[r * COLS + c] = t;
+        if (t == AIR && r >= SURFACE) dug[r * COLS + c] = true;
+        mapVersion++;
     }
 
     /** 左右边界和最底层视为实心;天空以上视为空 */
@@ -193,5 +210,6 @@ final class World {
                 if (t == ROCK || t == GAS || t == LAVA || t == AIR) set(c, r, DIRT);
             }
         }
+        Arrays.fill(dug, false); // 生成时挖的空洞不算玩家挖的
     }
 }

@@ -21,6 +21,8 @@ final class Player {
     long totalEarned;  // 累计卖矿收入
     double playTime;   // 游戏用时(秒)
     boolean won;       // 已通关
+    int milestones;    // 已领取的深度里程碑(位)
+    int tips;          // 已弹过的新手指引(位)
 
     // 钻探中
     boolean digging;
@@ -38,6 +40,8 @@ final class Player {
         totalEarned = 0;
         playTime = 0;
         won = false;
+        milestones = 0;
+        tips = 0;
         fuel = maxFuel();
         hull = maxHull();
         toSpawn();

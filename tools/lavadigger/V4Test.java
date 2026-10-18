@@ -24,6 +24,7 @@ public final class V4Test {
         task2(gp);
         task4(gp);
         task5(gp);
+        task6(gp);
 
         System.out.println(SelfTest.fails == 0 ? "V4 全部通过" : ("V4 失败 " + SelfTest.fails + " 项"));
         System.exit(SelfTest.fails == 0 ? 0 : 1);
@@ -322,5 +323,98 @@ public final class V4Test {
         check(gp.quakeCount > q0, "300 米以下会地震,5 分钟内 " + (gp.quakeCount - q0) + " 次");
         gp.respawn();
         check(gp.rocks.isEmpty(), "重生时清掉碎石");
+    }
+
+    static void press(GamePanel gp, int key) {
+        gp.keyPressed(new KeyEvent(gp, KeyEvent.KEY_PRESSED, 0, 0, key, KeyEvent.CHAR_UNDEFINED));
+        gp.keyReleased(new KeyEvent(gp, KeyEvent.KEY_RELEASED, 0, 0, key, KeyEvent.CHAR_UNDEFINED));
+    }
+
+    static void task6(GamePanel gp) throws Exception {
+        Player p = gp.p;
+        setAll(p, 0);
+        // 里程碑
+        p.money = 0;
+        p.milestones = 0;
+        room(gp, 34);
+        gp.world.set(20, World.SURFACE + 35, World.ROCK);
+        run(gp, 0.3);
+        check(p.money == 300 && (p.milestones & 1) != 0, "第一次到 100 米奖励 $300,现金 " + p.money);
+        check(gp.radioTimer > 0 && gp.radioMsg.length() > 0, "弹出公司无线电");
+        shot(gp, "v4-08-radio");
+        run(gp, 0.3);
+        room(gp, 34);
+        run(gp, 0.3);
+        check(p.money == 300, "里程碑只奖励一次");
+
+        // 新手指引
+        p.tips = 0;
+        gp.tipTimer = 0;
+        gp.tip(GamePanel.TIP_FULL);
+        check(gp.tipTimer > 0 && (p.tips & (1 << GamePanel.TIP_FULL)) != 0, "第一次满舱弹出指引");
+        shot(gp, "v4-09-tip");
+        gp.tipTimer = 0;
+        gp.tip(GamePanel.TIP_FULL);
+        check(gp.tipTimer <= 0, "同一条指引只弹一次");
+        room(gp, 60);
+        gp.world.set(20, World.SURFACE + 61, World.ROCK);
+        run(gp, 0.3);
+        check((p.tips & (1 << GamePanel.TIP_HEAT)) != 0, "进入地热区弹出指引");
+
+        // 失去焦点:游戏中自动暂停,商店里不变
+        gp.onFocusLost();
+        check(gp.state == GamePanel.State.PAUSE, "游戏中切出窗口自动暂停");
+        gp.state = GamePanel.State.PLAY;
+        gp.respawn();
+        gp.openShop(Shop.FUEL);
+        gp.onFocusLost();
+        check(gp.state == GamePanel.State.SHOP, "商店里切出窗口不打断");
+        gp.closeShop();
+
+        // M 静音、F11 全屏
+        boolean m0 = Sfx.muted;
+        press(gp, KeyEvent.VK_M);
+        check(Sfx.muted != m0, "M 键切换静音");
+        press(gp, KeyEvent.VK_M);
+        final int[] fs = {0};
+        gp.fullscreenToggler = () -> fs[0]++;
+        press(gp, KeyEvent.VK_F11);
+        check(fs[0] == 1, "F11 切换全屏");
+
+        // 满舱时贵重矿闪得更勤
+        java.util.Arrays.fill(p.cargo, 0);
+        Mineral gold = Mineral.ALL[4], dia = Mineral.ALL[7];
+        int g1 = gp.twinkleRate(gold), d1 = gp.twinkleRate(dia);
+        p.cargo[0] = p.cargoMax();
+        check(gp.twinkleRate(gold) == g1 * 2 && gp.twinkleRate(dia) == d1 * 2, "满舱时闪光频率加倍");
+        java.util.Arrays.fill(p.cargo, 0);
+
+        // 小地图:只记录玩家挖开的格子
+        World fresh = new World();
+        fresh.generate(5);
+        boolean none = true;
+        for (int r = 0; r < World.ROWS; r++) for (int c = 0; c < World.COLS; c++) none &= !fresh.isDug(c, r);
+        check(none, "新地图没有已挖格子(天然空洞不算)");
+        gp.respawn();
+        drive(gp, Shop.START_DIG_COL * T + T / 2.0);
+        SelfTest.hold(gp, KeyEvent.VK_DOWN, 3);
+        check(gp.world.isDug(Shop.START_DIG_COL, World.SURFACE + 1), "挖过的格子记入小地图");
+        shot(gp, "v4-10-minimap");
+        gp.respawn();
+
+        // 说明书新页
+        boolean page = false;
+        for (String t : GamePanel.HELP_TITLES) page |= t.contains("宝藏");
+        check(page, "说明书有宝藏一页");
+        gp.openHelp(GamePanel.State.PLAY);
+        for (int i = 0; i < GamePanel.HELP_TITLES.length; i++) {
+            gp.helpPage = i;
+            shot(gp, "v4-help-" + i);
+        }
+        gp.closeHelp();
+    }
+
+    static void drive(GamePanel gp, double x) {
+        SelfTest.drive(gp, x);
     }
 }

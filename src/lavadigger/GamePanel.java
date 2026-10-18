@@ -28,6 +28,28 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     static final double RELIEF_FUEL = 0.4;   // 救济油:补到油箱的 40%
     static final double LOW_FUEL = 0.2;
     static final double METERS_PER_ROW = 3;
+    // 深度里程碑:第一次到达给奖金
+    static final int[] MILESTONE_M = {100, 250, 500, 750, 1000};
+    static final int[] MILESTONE_BONUS = {300, 1200, 6500, 25000, 65000};
+    static final String[] MILESTONE_TEXT = {
+        "总部:干得漂亮,已经下到 100 米了!奖金 $%s 打到你账上了。",
+        "总部:250 米!这一带的矿开始值钱了。奖金 $%s。",
+        "总部:500 米,了不起!注意地热,油烧得更快。奖金 $%s。",
+        "总部:750 米……我们的仪器都快测不到你了。奖金 $%s。",
+        "总部:1000 米!熔岩之心就在下面不远了。奖金 $%s。",
+    };
+    // 新手指引:各种情况第一次发生时提示一次
+    static final int TIP_DIG = 0, TIP_ALARM = 1, TIP_FULL = 2, TIP_LAVA = 3, TIP_GAS = 4, TIP_SELL = 5, TIP_HEAT = 6, TIP_QUAKE = 7;
+    static final String[] TIP_TEXT = {
+        "往下钻的时候看看燃油条:白线是飞回地面大约要的油,别让油掉到白线以下",
+        "燃油报警了!现在就按住 ↑ 往上飞,回地面加油",
+        "货舱满了,再挖到的矿会丢掉。回地面去矿石收购站卖钱吧",
+        "橙红色的是熔岩,钻进去会被烧伤。绕开它,或者升级散热器",
+        "刚才是瓦斯!它看起来像泥土,细看有淡绿色斑点。探测器能提前标出来",
+        "卖了钱去改装厂升级,油箱和钻头最要紧",
+        "进入地热区:越往下越热,干什么都更费油。深度旁边的温度越高越费油",
+        "地震了!头顶掉灰就是碎石要落下来,赶紧挪开",
+    };
     static final double QUAKE_ROWS = 100;    // 300 米以下会地震
     static final double QUAKE_MIN = 60, QUAKE_MAX = 120; // 两次地震的间隔(秒)
     static final int ROCK_DRILL_LEVEL = 5;   // 钻头升到第 6 档(钻石级)起能钻岩石
@@ -69,6 +91,11 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     // 屏幕中间的大字消息(挖到宝藏等)
     String centerMsg = "", centerSub = "";
     double centerMsgTimer;
+    // 公司无线电(里程碑)和新手指引
+    String radioMsg = "", tipMsg = "";
+    double radioTimer, tipTimer;
+    /** F11 全屏切换,由窗口(Main)提供 */
+    Runnable fullscreenToggler;
     final List<String> report = new ArrayList<>();
     long lastNanos;
     Timer timer;
@@ -121,6 +148,8 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         if (state == State.PLAY || state == State.SHOP) p.playTime += dt;
         if (shopMsgTimer > 0) shopMsgTimer -= dt;
         if (centerMsgTimer > 0) centerMsgTimer -= dt;
+        if (radioTimer > 0) radioTimer -= dt;
+        if (tipTimer > 0 && state == State.PLAY) tipTimer -= dt;
         switch (state) {
             case PLAY: {
                 double left = dt;
@@ -210,9 +239,14 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         if (p.hull < p.maxHull() * 0.3 && fx.nextDouble() < dt * 6) spawnSmoke(p.x + 6, p.y, false);
 
         updateQuake(dt);
+        checkMilestones();
+        if (p.depthRows() > HEAT_START) tip(TIP_HEAT);
+        if (p.cargoCount() >= p.cargoMax()) tip(TIP_FULL);
+        if (p.depthRows() > 1 && (p.tips & (1 << TIP_LAVA)) == 0 && lavaNear(3)) tip(TIP_LAVA);
 
         int alarm = fuelAlarm();
         if (state == State.PLAY && alarm > 0) {
+            tip(TIP_ALARM);
             beepTimer -= dt;
             if (beepTimer <= 0) {
                 sfx.beep();
@@ -280,6 +314,44 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         return sum;
     }
 
+    void checkMilestones() {
+        double meters = p.depthRows() * METERS_PER_ROW;
+        for (int i = 0; i < MILESTONE_M.length; i++) {
+            if (meters < MILESTONE_M[i] || (p.milestones & (1 << i)) != 0) continue;
+            p.milestones |= 1 << i;
+            p.money += MILESTONE_BONUS[i];
+            radioMsg = String.format(MILESTONE_TEXT[i], fmtMoney(MILESTONE_BONUS[i]));
+            radioTimer = 5;
+            sfx.cash();
+        }
+    }
+
+    /** 显示一条新手指引(每条只显示一次) */
+    void tip(int id) {
+        if ((p.tips & (1 << id)) != 0) return;
+        p.tips |= 1 << id;
+        tipMsg = TIP_TEXT[id];
+        tipTimer = 6;
+    }
+
+    boolean lavaNear(int rad) {
+        int pc = (int) Math.floor((p.x + Player.W / 2.0) / T), pr = (int) Math.floor((p.y + Player.H / 2.0) / T);
+        for (int r = pr - rad; r <= pr + rad; r++)
+            for (int c = pc - rad; c <= pc + rad; c++)
+                if (world.get(c, r) == World.LAVA) return true;
+        return false;
+    }
+
+    /** 窗口失去焦点:松开所有按键;正在玩就自动暂停 */
+    void onFocusLost() {
+        releaseAllKeys();
+        if (state == State.PLAY) {
+            state = State.PAUSE;
+            menuSel = 0;
+            shopMsgTimer = 0;
+        }
+    }
+
     /** 深处每隔一阵地震一次;碎石只是粒子实体,落地就碎,从不写进地图 */
     void updateQuake(double dt) {
         if (p.depthRows() >= QUAKE_ROWS && !p.digging) {
@@ -340,6 +412,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
             rocksSpawned++;
         }
         addText(p.x + Player.W / 2.0, p.y - 10, "地震!小心头顶的落石", new Color(255, 200, 120));
+        tip(TIP_QUAKE);
     }
 
     void drawRocks(Graphics2D g, int ox, int oy) {
@@ -505,6 +578,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
             return;
         }
         p.digging = true;
+        if (dir == 0) tip(TIP_DIG);
         p.fallStartY = p.y;
         p.digCol = c;
         p.digRow = r;
@@ -562,6 +636,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
             spawnExplosion(cx, cy, 60);
             sfx.boom();
             damage(6 + (r - World.SURFACE) / 30.0, "瓦斯爆炸");
+            tip(TIP_GAS);
         }
     }
 
@@ -836,6 +911,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         p.totalEarned += v;
         java.util.Arrays.fill(p.cargo, 0);
         msg("卖出 " + n + " 件矿石,收入 $" + fmtMoney(v), new Color(255, 215, 80));
+        tip(TIP_SELL);
         sfx.cash();
         if (!p.won && heartGoal() > 0 && p.hearts >= heartGoal()) {
             p.won = true;
@@ -1322,7 +1398,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                     }
                     default:
                 }
-                if (twinkles(mi)) twinkle(g, h, x, y, lit, mi.value >= 1000 ? 2 : 1);
+                if (twinkles(mi)) twinkle(g, h, x, y, lit, twinkleRate(mi));
             }
         g.setClip(oc);
         Art.aa(g, false);
@@ -1395,8 +1471,14 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     }
 
     /** 一闪一闪的十字星光;贵的矿闪得更勤 */
+    /** 闪光频率:$1000 以上闪得勤;货舱满了再翻一倍,让人看到"可惜了" */
+    int twinkleRate(Mineral mi) {
+        int rate = mi.value >= 1000 ? 2 : 1;
+        return p.cargoCount() >= p.cargoMax() ? rate * 2 : rate;
+    }
+
     void twinkle(Graphics2D g, int h, int x, int y, double lit, int rate) {
-        double period = rate == 2 ? 2.2 : 3.2;
+        double period = rate >= 2 ? 2.2 : 3.2;
         double phase = (time * 0.6 * rate + (h % 1000) / 1000.0 * period) % period;
         if (phase > 0.4) return;
         double k = Math.sin(phase / 0.4 * Math.PI);
@@ -1534,6 +1616,53 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         g.setColor(new Color(220, 220, 220));
         g.drawString("F 油桶×" + p.items[0] + "   R 修理×" + p.items[1], 790, 20);
         g.drawString("X 炸药×" + p.items[2] + "   T 传送×" + p.items[3], 790, 39);
+        drawMinimap(g);
+    }
+
+    BufferedImage miniImg;
+    int miniVersion = -1;
+    static final int MINI_X = VW - 30, MINI_Y = 58, MINI_W = 24, MINI_H = VH - 58 - 30;
+
+    /** 右侧小地图:整条深度的标尺,画出挖过的地方、车的位置、里程碑和地热线 */
+    void drawMinimap(Graphics2D g) {
+        int rows = World.ROWS - World.SURFACE;
+        if (miniImg == null || miniVersion != world.mapVersion) {
+            if (miniImg == null) miniImg = new BufferedImage(World.COLS, rows, BufferedImage.TYPE_INT_ARGB);
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < World.COLS; c++)
+                    miniImg.setRGB(c, r, world.isDug(c, r + World.SURFACE) ? 0xFFE8D0A0 : 0x00000000);
+            miniVersion = world.mapVersion;
+        }
+        int x = MINI_X, y = MINI_Y, w = MINI_W, h = MINI_H;
+        g.setColor(new Color(0, 0, 0, 150));
+        g.fillRoundRect(x - 3, y - 3, w + 6, h + 6, 6, 6);
+        g.setColor(new Color(60, 40, 30, 200));
+        g.fillRect(x, y, w, h);
+        double hs = h / (double) (World.ROWS - 3 - World.SURFACE);
+        // 地热区
+        int hy = y + (int) (HEAT_START * hs);
+        g.setColor(new Color(255, 120, 40, 40));
+        g.fillRect(x, hy, w, y + h - hy);
+        g.drawImage(miniImg, x, y, w, (int) (rows * hs), null);
+        g.setFont(font(9));
+        for (int i = 0; i < MILESTONE_M.length; i++) {
+            int my = y + (int) (MILESTONE_M[i] / METERS_PER_ROW * hs);
+            boolean got = (p.milestones & (1 << i)) != 0;
+            String lab = String.valueOf(MILESTONE_M[i]);
+            g.setColor(got ? new Color(120, 255, 170, 200) : new Color(200, 200, 200, 140));
+            g.drawLine(x - 4, my, x, my);
+            g.drawString(lab, x - 5 - g.getFontMetrics().stringWidth(lab), my + 3);
+        }
+        g.setColor(new Color(255, 150, 60, 200));
+        g.drawLine(x, hy, x + w, hy);
+        // 车的位置
+        double d = Math.max(0, p.depthRows());
+        int vy = y + (int) Math.min(h, d * hs), vx = x + (int) ((p.x + Player.W / 2.0) / (World.COLS * T) * w);
+        boolean blink = ((int) (time * 3)) % 2 == 0;
+        g.setColor(blink ? new Color(255, 230, 60) : new Color(255, 140, 40));
+        g.fillRect(vx - 2, vy - 2, 5, 5);
+        g.setColor(new Color(255, 255, 255, 160));
+        g.drawRect(x - 1, y - 1, w + 1, h + 1);
     }
 
     void drawBar(Graphics2D g, int x, String label, double frac, Color c, String text) {
@@ -1598,6 +1727,34 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
             g.setFont(font(17));
             g.setColor(new Color(235, 225, 200, a));
             g.drawString(centerSub, (VW - w2) / 2, by + 68);
+        }
+        if (radioTimer > 0 && state == State.PLAY) {
+            int a = (int) (255 * Math.min(1, radioTimer / 0.6));
+            g.setFont(fontB(15));
+            int w = g.getFontMetrics().stringWidth(radioMsg) + 60, bx = 12, by = 58;
+            g.setColor(new Color(10, 25, 20, a * 210 / 255));
+            g.fillRoundRect(bx, by, w, 34, 10, 10);
+            g.setColor(new Color(120, 255, 170, a));
+            g.drawRoundRect(bx, by, w, 34, 10, 10);
+            // 小天线图标
+            g.setStroke(new BasicStroke(2f));
+            g.drawLine(bx + 20, by + 28, bx + 20, by + 14);
+            g.drawArc(bx + 13, by + 8, 14, 12, 30, 120);
+            g.drawArc(bx + 9, by + 4, 22, 18, 30, 120);
+            g.setStroke(new BasicStroke(1f));
+            g.drawString(radioMsg, bx + 42, by + 23);
+        }
+        if (tipTimer > 0 && state == State.PLAY) {
+            int a = (int) (255 * Math.min(1, tipTimer / 0.6));
+            g.setFont(font(15));
+            String t = "提示:" + tipMsg;
+            int w = g.getFontMetrics().stringWidth(t) + 32, bx = (VW - w) / 2, by = VH - 68;
+            g.setColor(new Color(0, 0, 0, a * 190 / 255));
+            g.fillRoundRect(bx, by, w, 34, 10, 10);
+            g.setColor(new Color(150, 210, 255, a));
+            g.drawRoundRect(bx, by, w, 34, 10, 10);
+            g.setColor(new Color(235, 245, 255, a));
+            g.drawString(t, bx + 16, by + 23);
         }
         // 货舱满了:常驻提醒
         if (state == State.PLAY && p.cargoCount() >= p.cargoMax() && p.depthRows() > 0.5) {
@@ -1718,7 +1875,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         menuSel = 0;
     }
 
-    static final String[] HELP_TITLES = {"操作", "怎么玩", "矿石价目表", "危险", "商店与升级"};
+    static final String[] HELP_TITLES = {"操作", "怎么玩", "矿石价目表", "危险", "商店与升级", "宝藏与奖励"};
 
     /** 说明页内容;"#"开头的行是小标题 */
     String[] helpLines(int page) {
@@ -1736,7 +1893,8 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                     "#道具(先在道具店买)",
                     "F 备用油桶    R 修理包    X 炸药    T 紧急传送",
                     "#其它",
-                    "Esc  暂停 / 存档 / 看说明        窗口可以拉大、最大化",
+                    "Esc  暂停 / 存档 / 看说明        M  静音        F11  全屏",
+                    "窗口可以拉大、最大化;切到别的窗口时游戏会自动暂停",
                 };
             case 1:
                 return new String[]{
@@ -1750,22 +1908,26 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                     "越深的矿越值钱,但往回飞的路也越长 —— 算好来回的油",
                     "燃油条上的白线 = 飞回地面大约要的油;剩油快不够回程时会报警、屏幕闪红",
                     "停在地面不耗油;停在地下也会慢慢耗油,别在下面发呆",
+                    "150 米以下有地热,越深越费油;右边的竖条小地图显示你在哪、挖过哪里",
                     "地底最深处藏着 6 颗「熔岩之心」—— 全部卖掉就通关!",
                 };
             case 3:
                 return new String[]{
-                    "#燃油耗尽 → 车会爆炸!",
-                    "爆炸后:这一趟的货全部丢失,并扣掉现金的 25% 作为救援费",
-                    "救援队会把新车送回地面,油加满、车修好",
+                    "#燃油耗尽 或 车身归零 → 车会爆炸!",
+                    "货全部丢失,扣现金 25% 救援费;新车送回地面,油加满、车修好",
+                    "货舱里的熔岩之心和宝藏不会毁掉,会回到地底深处",
                     "#岩石(灰色方块)",
-                    "钻不动,只能绕开,或者用炸药炸掉",
+                    "钻不动:绕开、用炸药炸,或把钻头升到钻石级",
                     "#熔岩(橙红色)",
-                    "钻进去会被烧伤,越深伤害越高;升级「散热器」可以减伤",
-                    "#瓦斯(看起来像普通泥土,细看有淡绿色斑点)",
-                    "一挖就爆炸,扣车身并炸开周围的土",
+                    "钻进去会被烧伤,越深伤害越高;「散热器」可以减伤",
+                    "#瓦斯(像普通泥土,细看有淡绿色斑点)",
+                    "一挖就爆炸,扣车身并炸开周围的土;「探测器」能提前标出来",
                     "#摔落",
-                    "掉落超过 4 格会摔伤:10 格扣 1.5、20 格扣 4、40 格扣 9;快落地时按 ↑ 刹车能减轻",
-                    "车身归零同样会爆炸",
+                    "掉落超过 4 格会摔伤(10 格扣 1.5、20 格扣 4);快落地时按 ↑ 刹车能减轻",
+                    "#地热(150 米以下)",
+                    "越深越热、越费油(最深处约 3.5 倍);深度旁显示温度,「散热器」能减轻",
+                    "#地震落石(300 米以下)",
+                    "不时会地震:头顶掉灰就是碎石要落下来了,赶紧挪开",
                 };
             default:
                 return new String[0];
@@ -1800,10 +1962,15 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         int ly = y + 100;
         if (helpPage == 2) drawMineralTable(g, x + 36, ly);
         else if (helpPage == 4) drawShopHelp(g, x + 36, ly);
+        else if (helpPage == 5) drawTreasureHelp(g, x + 36, ly);
         else {
-            for (String line : helpLines(helpPage)) {
+            String[] lines = helpLines(helpPage);
+            int heads = 0;
+            for (String line : lines) if (line.startsWith("#")) heads++;
+            int lh = Math.min(32, (384 - heads * 4) / lines.length); // 行多时压缩行距,免得超出面板
+            for (String line : lines) {
                 if (line.startsWith("#")) {
-                    ly += 6;
+                    ly += 4;
                     g.setFont(fontB(17));
                     g.setColor(new Color(255, 200, 80));
                     g.drawString(line.substring(1), x + 36, ly);
@@ -1812,7 +1979,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                     g.setColor(Color.WHITE);
                     g.drawString(line, x + 52, ly);
                 }
-                ly += 32;
+                ly += lh;
             }
         }
         g.setFont(font(13));
@@ -1843,11 +2010,48 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         }
     }
 
+    /** 说明书「宝藏与奖励」页:四种宝藏和深度里程碑 */
+    void drawTreasureHelp(Graphics2D g, int x, int y) {
+        g.setFont(fontB(17));
+        g.setColor(new Color(255, 200, 80));
+        g.drawString("地下宝藏(全图数量有限,挖到一个少一个;爆炸丢了会回到地底)", x, y);
+        y += 16;
+        for (int k = 0; k < Mineral.TREASURES; k++) {
+            int m = Mineral.FIRST_V4 + k;
+            Mineral mi = Mineral.ALL[m];
+            int cy = y + k * 52;
+            g.drawImage(tex.ore[Textures.band(World.SURFACE + mi.peakDepth)][m][0], x + 10, cy, 44, 44, null);
+            g.setFont(fontB(16));
+            g.setColor(Color.WHITE);
+            g.drawString(mi.name, x + 66, cy + 19);
+            g.setColor(new Color(255, 214, 70));
+            g.drawString("$" + fmtMoney(mi.value), x + 166, cy + 19);
+            g.setFont(font(14));
+            g.setColor(new Color(190, 190, 190));
+            g.drawString(String.format("约 %d~%d 米,全图 %d 个", Math.round(mi.minDepth * METERS_PER_ROW / 50) * 50,
+                Math.round(mi.peakDepth * METERS_PER_ROW / 50) * 50, Mineral.TREASURE_COUNT[k]), x + 270, cy + 19);
+            g.setColor(new Color(220, 210, 180));
+            g.drawString("「" + Mineral.TREASURE_TEXT[k] + "」", x + 66, cy + 39);
+        }
+        y += Mineral.TREASURES * 52 + 22;
+        g.setFont(fontB(17));
+        g.setColor(new Color(255, 200, 80));
+        g.drawString("深度里程碑(第一次到达时,总部发奖金)", x, y);
+        y += 28;
+        g.setFont(font(15));
+        for (int i = 0; i < MILESTONE_M.length; i++) {
+            boolean got = (p.milestones & (1 << i)) != 0;
+            int cx = x + 16 + (i % 3) * 220, cy = y + (i / 3) * 26;
+            g.setColor(got ? new Color(120, 255, 170) : Color.WHITE);
+            g.drawString(MILESTONE_M[i] + " 米   $" + fmtMoney(MILESTONE_BONUS[i]) + (got ? "  (已领)" : ""), cx, cy);
+        }
+    }
+
     void drawShopHelp(Graphics2D g, int x, int y) {
         String[] shops = {
             "加油站:加油 $" + (int) FUEL_PRICE + "/升,修车 $" + (int) REPAIR_PRICE + "/点;没钱时可领免费救济油",
             "矿石收购站:把货舱里的矿全部卖掉",
-            "改装厂:升级下面 6 种部件,每种 7 级,越往后越贵",
+            "改装厂:升级下面 " + Upgrades.KINDS + " 种部件,每种 7 级,越往后越贵",
             "道具店:买消耗道具,在地下按对应键使用",
         };
         g.setFont(fontB(17));
@@ -2043,6 +2247,17 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         boolean downK = k == KeyEvent.VK_DOWN || k == KeyEvent.VK_S;
         boolean ok = k == KeyEvent.VK_ENTER || k == KeyEvent.VK_SPACE;
         boolean esc = k == KeyEvent.VK_ESCAPE;
+        if (!repeat && k == KeyEvent.VK_M) {
+            Sfx.muted = !Sfx.muted;
+            String t = Sfx.muted ? "已静音(M 恢复)" : "声音已打开";
+            if (state == State.PLAY) addText(p.x + Player.W / 2.0, p.y - 8, t, new Color(220, 220, 220));
+            else msg(t, new Color(220, 220, 220));
+            return;
+        }
+        if (!repeat && k == KeyEvent.VK_F11) {
+            if (fullscreenToggler != null) fullscreenToggler.run();
+            return;
+        }
         switch (state) {
             case TITLE: {
                 String[] items = titleItems();

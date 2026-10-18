@@ -9,6 +9,7 @@ import java.util.concurrent.Executors;
 final class Sfx {
     private static final float RATE = 22050f;
     static boolean enabled = true;
+    static boolean muted;  // 玩家按 M 静音
 
     private Clip beep, boom, cash, buy, error, pick, hit, rumble;
     private boolean ok;
@@ -45,6 +46,7 @@ final class Sfx {
     void rumble() { play(rumble); }
 
     private void play(final Clip c) {
+        if (muted) return;
         if (!ok || c == null) return;
         exec.submit(() -> {
             try {
