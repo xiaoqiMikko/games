@@ -5,6 +5,7 @@ final class Player {
     static final int W = 26, H = 24;
 
     double x, y, vx, vy;
+    double fallStartY;  // 摔伤计算:等效的自由落体起点
     boolean onGround, touchL, touchR, thrusting;
     int facing = 1;
     double wheelAngle;
@@ -48,6 +49,7 @@ final class Player {
         vx = vy = 0;
         digging = false;
         onGround = true;
+        fallStartY = y;
     }
 
     double val(int kind) { return Upgrades.VALUES[kind][level[kind]]; }

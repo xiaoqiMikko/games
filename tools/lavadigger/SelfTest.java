@@ -104,6 +104,7 @@ public final class SelfTest {
         // 深处画面:直接把车放到 150 格深的空洞里
         gp.p.x = 20 * World.T + 3;
         gp.p.y = (World.SURFACE + 150) * World.T + World.T - Player.H;
+        gp.p.fallStartY = gp.p.y;
         for (int c = 18; c <= 23; c++) for (int r = World.SURFACE + 148; r <= World.SURFACE + 150; r++) gp.world.set(c, r, World.AIR);
         gp.snapCamera();
         gp.p.fuel = gp.p.maxFuel() * 0.15;
@@ -145,6 +146,7 @@ public final class SelfTest {
         // 摔落伤害
         gp.respawn();
         gp.p.y = 0;
+        gp.p.fallStartY = 0;
         gp.p.x = 25 * World.T;
         double h1 = gp.p.hull;
         run(gp, 2);
@@ -241,11 +243,44 @@ public final class SelfTest {
             tiles = (gp.p.y - y0) / World.T;
             System.out.printf("刹车: 下落速度 400 时按↑, %.2f 格停住%n", tiles);
             check(tiles < 1.2, "一般下落速度 1 格左右刹住");
-            // 不按↑摔到底
+        }
+        // 摔伤按高度:从不同高度掉进竖井
+        {
+            int sc = 27, bottom = World.SURFACE + 100;
+            double[] expect = {0, 0.25, 1.5, 4, 9};
+            int[] hs = {3, 5, 10, 20, 40};
+            for (int k = 0; k < hs.length; k++) {
+                for (int r = bottom - 50; r < bottom; r++) gp.world.set(sc, r, World.AIR);
+                gp.world.set(sc, bottom, World.DIRT);
+                gp.respawn();
+                gp.p.hull = gp.p.maxHull();
+                gp.p.x = sc * World.T + 3;
+                gp.p.y = (bottom - hs[k]) * World.T - Player.H;   // 车底离井底 hs 格
+                gp.p.fallStartY = gp.p.y;
+                gp.p.onGround = false;
+                gp.p.vy = 1;
+                run(gp, 5);
+                double dmg = gp.p.maxHull() - gp.p.hull;
+                System.out.printf("掉 %d 格: 扣 %.2f (预期 %.2f)%n", hs[k], dmg, expect[k]);
+                check(Math.abs(dmg - expect[k]) < 0.15, "掉 " + hs[k] + " 格扣血符合高度");
+            }
+            // 掉 40 格,快落地前刹车
+            for (int r = bottom - 50; r < bottom; r++) gp.world.set(sc, r, World.AIR);
+            gp.respawn();
             gp.p.hull = gp.p.maxHull();
-            run(gp, 6);
-            System.out.printf("60 格自由落体摔到底: 车身 %.1f/%.0f%n", gp.p.hull, gp.p.maxHull());
-            check(gp.p.maxHull() - gp.p.hull <= 2.01, "摔伤最多 2 点");
+            gp.p.x = sc * World.T + 3;
+            gp.p.y = (bottom - 40) * World.T - Player.H;
+            gp.p.fallStartY = gp.p.y;
+            gp.p.onGround = false;
+            gp.p.vy = 1;
+            while (gp.p.y < (bottom - 4) * World.T - Player.H) gp.update(1 / 60.0);
+            gp.keys[KeyEvent.VK_UP] = true;
+            for (int i = 0; i < 120 && gp.p.vy > 0; i++) gp.update(1 / 60.0);
+            gp.keys[KeyEvent.VK_UP] = false;
+            run(gp, 3);
+            double dmg = gp.p.maxHull() - gp.p.hull;
+            System.out.printf("掉 40 格但快落地时刹车: 扣 %.2f%n", dmg);
+            check(dmg < 0.5, "刹车后基本不摔伤");
         }
         gp.respawn();
         check(gp.p.cargoMax() == 10, "出厂货舱 10 格");
@@ -358,6 +393,7 @@ public final class SelfTest {
         World w2 = new World();
         Player p2 = new Player();
         check(SaveManager.load(w2, p2), "读档成功");
+        check(p2.fallStartY == p2.y, "读档后下落起点重置为当前位置");
         check(p2.money == 12345 && p2.level[Upgrades.DRILL] == 3 && java.util.Arrays.equals(w2.tiles, gp.world.tiles), "存档内容一致");
         System.setProperty("user.home", home);
 

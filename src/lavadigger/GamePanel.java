@@ -21,8 +21,9 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     static final double FUEL_PRICE = 2.0, REPAIR_PRICE = 5.0;
     static final double DIG_BASE = 0.75;     // 出厂钻头挖一格泥土的秒数
     static final double DEATH_FEE = 0.25;    // 爆炸后的救援费:现金的 25%
-    static final double FALL_SAFE = 500;     // 落地速度超过这个才扣血
-    static final double MAX_FALL = 650;      // 最大下落速度;摔伤最多 (650-500)/75 = 2 点
+    static final double FALL_SAFE_ROWS = 4;  // 下落 4 格以内不掉血
+    static final double FALL_DMG_PER_ROW = 0.25; // 超过的部分每格扣 0.25 点:10 格 1.5、20 格 4、40 格 9
+    static final double MAX_FALL = 650;      // 最大下落速度
     static final double BRAKE = 2200;        // 下落时按↑的额外刹车加速度
     static final double RELIEF_FUEL = 0.4;   // 救济油:补到油箱的 40%
     static final double LOW_FUEL = 0.2;
@@ -173,8 +174,8 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
             moveX(dt);
             if (up) cornerAssist(dt, left ^ right ? (left ? -1 : 1) : 0);
             double impact = moveY(dt);
+            trackFall(up, impact);
             p.wheelAngle += p.vx * dt / 4;
-            if (impact > FALL_SAFE) damage((impact - FALL_SAFE) / 75.0, "摔伤");
 
             if (state == State.PLAY && p.onGround && !up) {
                 if (down && !left && !right) tryDigDown();
@@ -334,6 +335,25 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         return false;
     }
 
+    /**
+     * 摔伤按下落高度算。fallStartY 记录"相当于从哪个高度开始自由落体":
+     * 往上飞或站在地上时重置;下落中按↑刹车,就按剩余速度折算成等效高度 v²/2g。
+     */
+    void trackFall(boolean up, double impact) {
+        if (p.fallStartY > p.y) p.fallStartY = p.y; // 起点不可能在车下面(瞬移/读档后的保险)
+        if (p.onGround) {
+            if (impact > 0) {
+                double rows = (p.y - p.fallStartY) / T;
+                if (rows > FALL_SAFE_ROWS) damage((rows - FALL_SAFE_ROWS) * FALL_DMG_PER_ROW, String.format("摔伤(%.0f 格)", rows));
+            }
+            p.fallStartY = p.y;
+        } else if (p.vy <= 0) {
+            p.fallStartY = p.y;
+        } else if (up) {
+            p.fallStartY = Math.max(p.fallStartY, p.y - p.vy * p.vy / (2 * GRAVITY));
+        }
+    }
+
     void tryDigDown() {
         int c = (int) Math.floor((p.x + Player.W / 2.0) / T);
         int r = (int) Math.floor((p.y + Player.H + 1) / T);
@@ -366,6 +386,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
             return;
         }
         p.digging = true;
+        p.fallStartY = p.y;
         p.digCol = c;
         p.digRow = r;
         p.digDir = dir;
@@ -387,6 +408,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         p.x = p.digTX;
         p.y = p.digTY;
         p.vx = p.vy = 0;
+        p.fallStartY = p.y;
         double cx = c * T + T / 2.0, cy = r * T + T / 2.0;
         int m = World.mineralOf(t);
         if (m >= 0) {
@@ -1316,7 +1338,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                     "← →  (或 A D)    左右行驶",
                     "↑    (或 W)      喷气往上飞(很费油)",
                     "↓    (或 S)      向下钻",
-                    "往下掉的时候按住 ↑  可以快速刹车",
+                    "往下掉的时候按住 ↑  可以快速刹车(能减轻摔伤)",
                     "贴着墙按住 ← / →  横着钻(不能往上钻)",
                     "#地面上",
                     "停在商店门口按 回车(或 E)  进店",
@@ -1351,7 +1373,8 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                     "#瓦斯(看起来像普通泥土,细看有淡绿色斑点)",
                     "一挖就爆炸,扣车身并炸开周围的土",
                     "#摔落",
-                    "掉得太快会摔伤(最多扣 2 点),下落时按 ↑ 能刹车;车身归零同样会爆炸",
+                    "掉落超过 4 格会摔伤:10 格扣 1.5、20 格扣 4、40 格扣 9;快落地时按 ↑ 刹车能减轻",
+                    "车身归零同样会爆炸",
                 };
             default:
                 return new String[0];

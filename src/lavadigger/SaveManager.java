@@ -74,6 +74,7 @@ final class SaveManager {
             p.playTime = Double.parseDouble(pr.getProperty("playTime", "0"));
             p.won = Boolean.parseBoolean(pr.getProperty("won", "false"));
             p.vx = p.vy = 0;
+            p.fallStartY = p.y; // 读档后从当前位置重新计算下落高度
             p.digging = false;
             return true;
         } catch (Exception e) {
