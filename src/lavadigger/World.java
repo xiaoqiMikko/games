@@ -12,6 +12,7 @@ final class World {
 
     static final byte AIR = 0, DIRT = 1, ROCK = 2, BEDROCK = 3, CONCRETE = 4, LAVA = 5, GAS = 6;
     static final byte ORE = 10;       // ORE + 矿物编号
+    static final int HEARTS = 6;      // 熔岩之心数量(全部卖出即通关)
 
     byte[] tiles = new byte[COLS * ROWS];
     long seed;
@@ -109,14 +110,19 @@ final class World {
                 }
             }
         }
-        // 熔岩之心:最底部附近只放 6 颗,四周围着熔岩
-        for (int i = 0; i < 6; i++) {
+        // 熔岩之心:最底部附近放 HEARTS 颗,互相隔开(否则后放的熔岩会盖掉先放的),四周围着熔岩
+        java.util.List<int[]> hearts = new java.util.ArrayList<>();
+        for (int tries = 0; hearts.size() < HEARTS && tries < 1000; tries++) {
             int c = 2 + rnd.nextInt(COLS - 4);
             int r = ROWS - 18 + rnd.nextInt(12);
+            boolean far = true;
+            for (int[] h : hearts) if (Math.abs(h[0] - c) <= 2 && Math.abs(h[1] - r) <= 2) far = false;
+            if (!far) continue;
             for (int dr = -1; dr <= 1; dr++)
                 for (int dc = -1; dc <= 1; dc++)
                     if (rnd.nextDouble() < 0.6) set(c + dc, r + dr, LAVA);
             set(c, r, (byte) (ORE + Mineral.HEART));
+            hearts.add(new int[]{c, r});
         }
         // 出生点附近前几层保证是普通泥土,新手友好
         for (int r = SURFACE; r < SURFACE + 3; r++) {

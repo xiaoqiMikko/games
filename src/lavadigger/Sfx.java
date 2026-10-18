@@ -21,7 +21,7 @@ final class Sfx {
     Sfx() {
         if (!enabled) return;
         try {
-            beep = make(cat(tone(980, 0.09, 0.35), silence(0.04), tone(980, 0.09, 0.35)));
+            beep = make(soft(740, 0.16, 0.22));
             boom = make(noise(1.1, 0.9));
             cash = make(cat(tone(880, 0.07, 0.3), tone(1320, 0.12, 0.3)));
             buy = make(cat(tone(660, 0.06, 0.3), tone(990, 0.06, 0.3), tone(1320, 0.1, 0.3)));
@@ -68,6 +68,18 @@ final class Sfx {
             double env = Math.min(1, Math.min(i / 200.0, (n - i) / 400.0));
             double s = Math.signum(Math.sin(2 * Math.PI * freq * i / RATE)) * 0.6 + Math.sin(2 * Math.PI * freq * i / RATE) * 0.4;
             put(b, i, s * vol * env);
+        }
+        return b;
+    }
+
+    /** 柔和的正弦提示音:淡入淡出,不刺耳 */
+    private static byte[] soft(double freq, double dur, double vol) {
+        int n = (int) (RATE * dur);
+        byte[] b = new byte[n * 2];
+        for (int i = 0; i < n; i++) {
+            double t = i / (double) n;
+            double env = Math.sin(Math.PI * t);
+            put(b, i, Math.sin(2 * Math.PI * freq * i / RATE) * vol * env);
         }
         return b;
     }

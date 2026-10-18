@@ -215,6 +215,139 @@ public final class SelfTest {
             check(Math.abs(gp.p.x - xFar) < 0.5, "离竖井太远时不会被自动挪动");
         }
 
+        // ===== 第三轮:刹车 / 摔伤 / 修车价 / 报警 / 救济油 / 货舱 / 熔岩之心 / 结局 =====
+        {
+            // 深竖井里自由落体到最快,再按↑,看要多远才停住
+            int sc = 26, top = World.SURFACE + 40;
+            for (int r = top; r < top + 60; r++) gp.world.set(sc, r, World.AIR);
+            gp.world.set(sc, top + 60, World.DIRT);
+            gp.respawn();
+            gp.p.x = sc * World.T + 3;
+            gp.p.y = top * World.T;
+            gp.p.vy = 0;
+            run(gp, 2.5);
+            double vmax = gp.p.vy, y0 = gp.p.y;
+            gp.keys[KeyEvent.VK_UP] = true;
+            for (int i = 0; i < 300 && gp.p.vy > 0; i++) gp.update(1 / 60.0);
+            gp.keys[KeyEvent.VK_UP] = false;
+            double tiles = (gp.p.y - y0) / World.T;
+            System.out.printf("刹车: 下落速度 %.0f 时按↑, %.2f 格停住%n", vmax, tiles);
+            check(tiles < 3.2, "最快下落时 3 格内刹住");
+            gp.p.vy = 400;
+            y0 = gp.p.y;
+            gp.keys[KeyEvent.VK_UP] = true;
+            for (int i = 0; i < 300 && gp.p.vy > 0; i++) gp.update(1 / 60.0);
+            gp.keys[KeyEvent.VK_UP] = false;
+            tiles = (gp.p.y - y0) / World.T;
+            System.out.printf("刹车: 下落速度 400 时按↑, %.2f 格停住%n", tiles);
+            check(tiles < 1.2, "一般下落速度 1 格左右刹住");
+            // 不按↑摔到底
+            gp.p.hull = gp.p.maxHull();
+            run(gp, 6);
+            System.out.printf("60 格自由落体摔到底: 车身 %.1f/%.0f%n", gp.p.hull, gp.p.maxHull());
+            check(gp.p.maxHull() - gp.p.hull <= 2.01, "摔伤最多 2 点");
+        }
+        gp.respawn();
+        check(gp.p.cargoMax() == 10, "出厂货舱 10 格");
+        // 修车价 $5/点
+        gp.p.hull = gp.p.maxHull() - 4;
+        gp.p.money = 1000;
+        gp.openShop(Shop.FUEL);
+        gp.repair();
+        check(gp.p.money == 980, "修 4 点花 $20, money=" + gp.p.money);
+        // 救济油
+        gp.p.money = 0;
+        gp.p.fuel = 0.5;
+        java.util.Arrays.fill(gp.p.cargo, 0);
+        check(gp.canGetRelief() && gp.shopItems().get(0).label.contains("救济"), "没钱没货时加油站有救济油");
+        shot(gp, "13-relief");
+        gp.relief();
+        check(Math.abs(gp.p.fuel - gp.p.maxFuel() * 0.4) < 1e-6, "救济油补到 40%");
+        check(!gp.canGetRelief(), "领过后不能再领");
+        gp.p.money = 100;
+        gp.p.fuel = 0.5;
+        check(!gp.canGetRelief(), "有钱时不给救济油");
+        gp.closeShop();
+        // 地下报警:按回程油量 1.2 倍
+        {
+            gp.p.x = 26 * World.T + 3;
+            gp.p.y = (World.SURFACE + 60) * World.T + World.T - Player.H;
+            gp.p.onGround = true;
+            double ret = gp.returnFuel();
+            gp.p.fuel = ret * 1.3;
+            int a1 = gp.fuelAlarm();
+            gp.p.fuel = ret * 1.15;
+            int a2 = gp.fuelAlarm();
+            gp.p.fuel = ret * 1.0;
+            int a3 = gp.fuelAlarm();
+            System.out.printf("回程 %.2f 升: 剩1.3倍→%d, 1.15倍→%d, 1.0倍→%d%n", ret, a1, a2, a3);
+            check(a1 == 0 && a2 == 1 && a3 == 2, "报警阈值按回程 1.2 倍");
+            gp.p.fuel = gp.p.maxFuel();
+        }
+        // 熔岩之心:全图正好 6 颗
+        {
+            World hw = new World();
+            boolean all6 = true;
+            for (long seed = 1; seed <= 30; seed++) {
+                hw.generate(seed);
+                int n = 0;
+                for (byte t : hw.tiles) if (t == World.ORE + Mineral.HEART) n++;
+                if (n != World.HEARTS) { all6 = false; System.out.println("seed " + seed + " 熔岩之心 " + n); }
+            }
+            check(all6, "30 张随机地图都正好 6 颗熔岩之心");
+        }
+        // 炸药炸不掉熔岩之心;货舱满时挖不了熔岩之心
+        {
+            int hc = 26, hr = World.SURFACE + 70;
+            gp.respawn();
+            gp.world.set(hc, hr, World.AIR);
+            gp.world.set(hc + 1, hr, (byte) (World.ORE + Mineral.HEART));
+            gp.world.set(hc, hr + 1, World.DIRT);
+            gp.p.x = hc * World.T + 3;
+            gp.p.y = hr * World.T + World.T - Player.H;
+            gp.p.items[2] = 1;
+            gp.useItem(2);
+            check(gp.world.get(hc + 1, hr) == World.ORE + Mineral.HEART, "炸药炸不掉熔岩之心");
+            gp.world.set(hc, hr + 1, World.DIRT);
+            gp.p.x = hc * World.T + 3;
+            gp.p.y = hr * World.T + World.T - Player.H;
+            gp.p.vy = 0;
+            gp.p.cargo[0] = gp.p.cargoMax();
+            run(gp, 0.3);
+            hold(gp, KeyEvent.VK_RIGHT, 1.5);
+            check(gp.world.get(hc + 1, hr) == World.ORE + Mineral.HEART && !gp.p.digging, "货舱满时不会把熔岩之心挖丢");
+            run(gp, 0.2);
+            shot(gp, "14-cargo-full");
+            gp.world.set(hc + 1, hr, World.DIRT); // 清掉测试放的那颗
+            java.util.Arrays.fill(gp.p.cargo, 0);
+            gp.respawn();
+        }
+        // 结局:卖掉最后一颗熔岩之心
+        {
+            int goal = gp.heartGoal();
+            check(goal == World.HEARTS, "通关目标 = 6 颗, 实际 " + goal);
+            // 把地图上的熔岩之心"挖走":前 5 颗算已卖出,最后 1 颗放货舱
+            int left = 0;
+            for (int i = 0; i < gp.world.tiles.length; i++)
+                if (gp.world.tiles[i] == World.ORE + Mineral.HEART) { gp.world.tiles[i] = World.AIR; left++; }
+            gp.p.hearts = left - 1;
+            gp.p.cargo[Mineral.HEART] = 1;
+            check(gp.heartGoal() == World.HEARTS, "挖走后目标不变");
+            gp.p.totalEarned = 123456;
+            gp.p.playTime = 3725;
+            gp.openShop(Shop.SELL);
+            gp.sellAll();
+            check(gp.state == GamePanel.State.ENDING && gp.p.won, "卖出全部熔岩之心后通关");
+            run(gp, 0.5);
+            shot(gp, "15-ending");
+            gp.state = GamePanel.State.PLAY;
+            gp.p.cargo[Mineral.HEART] = 1;
+            gp.openShop(Shop.SELL);
+            gp.sellAll();
+            check(gp.state == GamePanel.State.SHOP, "通关后再卖不会重复弹结局");
+            gp.closeShop();
+        }
+
         // 存读档往返
         SaveManager.enabled = true;
         String home = System.getProperty("user.home");

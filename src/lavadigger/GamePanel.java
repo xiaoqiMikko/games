@@ -18,15 +18,17 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     // 物理与经济参数
     static final double GRAVITY = 700;
     static final double FUEL_IDLE = 0.0085, FUEL_DRIVE = 0.06, FUEL_THRUST = 0.14, FUEL_DRILL = 0.13; // 升/秒(怠速:出厂油箱约 20 分钟耗光)
-    static final double FUEL_PRICE = 2.0, REPAIR_PRICE = 12.0;
+    static final double FUEL_PRICE = 2.0, REPAIR_PRICE = 5.0;
     static final double DIG_BASE = 0.75;     // 出厂钻头挖一格泥土的秒数
     static final double DEATH_FEE = 0.25;    // 爆炸后的救援费:现金的 25%
     static final double FALL_SAFE = 500;     // 落地速度超过这个才扣血
+    static final double MAX_FALL = 650;      // 最大下落速度;摔伤最多 (650-500)/75 = 2 点
+    static final double BRAKE = 2200;        // 下落时按↑的额外刹车加速度
+    static final double RELIEF_FUEL = 0.4;   // 救济油:补到油箱的 40%
     static final double LOW_FUEL = 0.2;
-    static final double RETURN_MARGIN = 1.5, RETURN_EXTRA = 0.5; // 剩油 < 回程油×1.5+0.5 升 就报警
     static final double METERS_PER_ROW = 3;
 
-    enum State { TITLE, PLAY, SHOP, PAUSE, EXPLODING, REPORT, HELP }
+    enum State { TITLE, PLAY, SHOP, PAUSE, EXPLODING, REPORT, HELP, ENDING }
 
     // 游戏说明页
     int helpPage;
@@ -98,6 +100,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
 
     void update(double dt) {
         time += dt;
+        if (state == State.PLAY || state == State.SHOP) p.playTime += dt;
         if (shopMsgTimer > 0) shopMsgTimer -= dt;
         switch (state) {
             case PLAY: {
@@ -160,17 +163,18 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
             p.thrusting = up;
             if (up) {
                 p.vy -= (GRAVITY + 430 * eng) * dt;
+                if (p.vy > 0) p.vy = Math.max(0, p.vy - BRAKE * dt); // 正在往下掉:用力刹车
                 p.fuel -= FUEL_THRUST * dt;
                 if (fx.nextDouble() < dt * 30) spawnSmoke(p.x + Player.W / 2.0, p.y + Player.H, true);
             }
             p.vy += GRAVITY * dt;
-            p.vy = Math.max(-130 * eng, Math.min(750, p.vy));
+            p.vy = Math.max(-130 * eng, Math.min(MAX_FALL, p.vy));
 
             moveX(dt);
             if (up) cornerAssist(dt, left ^ right ? (left ? -1 : 1) : 0);
             double impact = moveY(dt);
             p.wheelAngle += p.vx * dt / 4;
-            if (impact > FALL_SAFE) damage((impact - FALL_SAFE) / 50.0, "摔伤");
+            if (impact > FALL_SAFE) damage((impact - FALL_SAFE) / 75.0, "摔伤");
 
             if (state == State.PLAY && p.onGround && !up) {
                 if (down && !left && !right) tryDigDown();
@@ -190,7 +194,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
             beepTimer -= dt;
             if (beepTimer <= 0) {
                 sfx.beep();
-                beepTimer = alarm == 2 ? 0.45 : 0.9;
+                beepTimer = alarm == 2 ? 1.2 : 2.0; // 提醒节奏放缓,不要太急促
             }
         }
         if (p.fuel <= 0 && state == State.PLAY) {
@@ -244,10 +248,16 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         double ff = p.fuel / p.maxFuel();
         // 已经安全停在地面上:地面开车不耗油,不用再报警;一旦离地飞起来或钻下去就恢复报警
         if (p.onGround && Math.abs(p.depthRows()) < 0.5 && !p.digging) return 0;
-        boolean under = p.depthRows() > 0.5;
-        double ret = returnFuel();
-        if (ff < 0.1 || (under && p.fuel < ret * 1.1 + 0.2)) return 2;
-        if (ff < LOW_FUEL || (under && p.fuel < ret * RETURN_MARGIN + RETURN_EXTRA)) return 1;
+        if (p.depthRows() > 0.5) {
+            // 地下:按"直线飞回地面要多少油"判断。回程要 5 升,剩 6 升左右开始提醒
+            double ret = returnFuel();
+            if (p.fuel < ret * 1.05 + 0.15) return 2;
+            if (p.fuel < Math.max(ret * 1.2, ret + 0.3)) return 1;
+            return 0;
+        }
+        // 在地面上方飞:按油箱比例
+        if (ff < 0.1) return 2;
+        if (ff < LOW_FUEL) return 1;
         return 0;
     }
 
@@ -339,6 +349,13 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     void startDig(int c, int r, int dir) {
         byte t = world.get(c, r);
         if (t == World.AIR) return;
+        if (t == World.ORE + Mineral.HEART && p.cargoCount() >= p.cargoMax()) {
+            if (rockMsgCooldown <= 0) {
+                addText(p.x + Player.W / 2.0, p.y - 6, "货舱满了,装不下熔岩之心!先回去卖矿", new Color(255, 160, 40));
+                rockMsgCooldown = 1.5;
+            }
+            return;
+        }
         if (!World.diggable(t)) {
             if (rockMsgCooldown <= 0) {
                 String m = t == World.ROCK ? "岩石太硬,钻不动!(可以用炸药)"
@@ -426,6 +443,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     void buildReport() {
         int lost = p.cargoCount(), lostVal = p.cargoValue();
         int fee = (int) (p.money * DEATH_FEE);
+        p.deaths++;
         p.money -= fee;
         java.util.Arrays.fill(p.cargo, 0);
         report.clear();
@@ -473,7 +491,8 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 for (int dr = -1; dr <= 1; dr++)
                     for (int dc = -1; dc <= 1; dc++) {
                         byte t = world.get(c + dc, r + dr);
-                        if (t != World.BEDROCK && t != World.CONCRETE && r + dr >= World.SURFACE) world.set(c + dc, r + dr, World.AIR);
+                        if (t != World.BEDROCK && t != World.CONCRETE && t != World.ORE + Mineral.HEART && r + dr >= World.SURFACE)
+                            world.set(c + dc, r + dr, World.AIR);
                     }
                 spawnExplosion(cx, cy, 90);
                 shake = 14;
@@ -529,6 +548,10 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         List<MenuItem> list = new ArrayList<>();
         switch (shopType) {
             case Shop.FUEL: {
+                if (canGetRelief()) {
+                    list.add(new MenuItem("领取救济油(免费)   补到 " + Math.round(RELIEF_FUEL * 100) + "%",
+                        "身无分文、货舱也是空的?先免费给你一点油,下去挖一趟再说。", true, this::relief));
+                }
                 double need = Math.max(0, p.maxFuel() - p.fuel);
                 int cost = (int) Math.ceil(need * FUEL_PRICE);
                 list.add(new MenuItem(String.format("加满燃油     %.1f 升     $%s", need, fmtMoney(cost)),
@@ -536,7 +559,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 double hn = Math.max(0, p.maxHull() - p.hull);
                 int hc = (int) Math.ceil(hn * REPAIR_PRICE);
                 list.add(new MenuItem(String.format("修复车身     %.1f 点     $%s", hn, fmtMoney(hc)),
-                    "维修费 $12 / 点。", hn > 0.05, this::repair));
+                    "维修费 $" + (int) REPAIR_PRICE + " / 点。", hn > 0.05, this::repair));
                 break;
             }
             case Shop.SELL: {
@@ -606,6 +629,17 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         }
     }
 
+    boolean canGetRelief() {
+        return p.money < FUEL_PRICE && p.cargoCount() == 0 && p.fuel < p.maxFuel() * RELIEF_FUEL - 0.05;
+    }
+
+    void relief() {
+        if (!canGetRelief()) return;
+        p.fuel = p.maxFuel() * RELIEF_FUEL;
+        msg("领到救济油,油箱补到 " + Math.round(RELIEF_FUEL * 100) + "%", new Color(120, 255, 120));
+        sfx.buy();
+    }
+
     void repair() {
         double need = p.maxHull() - p.hull;
         int cost = (int) Math.ceil(need * REPAIR_PRICE);
@@ -636,9 +670,23 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         }
         if (p.cargo[Mineral.HEART] > 0) p.hearts += p.cargo[Mineral.HEART];
         p.money += v;
+        p.totalEarned += v;
         java.util.Arrays.fill(p.cargo, 0);
         msg("卖出 " + n + " 件矿石,收入 $" + fmtMoney(v), new Color(255, 215, 80));
         sfx.cash();
+        if (!p.won && heartGoal() > 0 && p.hearts >= heartGoal()) {
+            p.won = true;
+            shopType = -1;
+            state = State.ENDING;
+            save();
+        }
+    }
+
+    /** 通关目标:全图熔岩之心总数(地图里剩的 + 已卖出 + 货舱里的) */
+    int heartGoal() {
+        int n = p.hearts + p.cargo[Mineral.HEART];
+        for (byte t : world.tiles) if (t == World.ORE + Mineral.HEART) n++;
+        return n;
     }
 
     void buyUpgrade(int k) {
@@ -689,7 +737,8 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     }
 
     void saveOnExit() {
-        if (state == State.PLAY || state == State.SHOP || state == State.PAUSE) SaveManager.save(world, p);
+        if (state == State.PLAY || state == State.SHOP || state == State.PAUSE || state == State.ENDING
+            || state == State.HELP) SaveManager.save(world, p);
         else if (state == State.EXPLODING || state == State.REPORT) {
             // 爆炸中途退出:按爆炸结算后再存
             if (state == State.EXPLODING) buildReport();
@@ -887,6 +936,10 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 if (helpReturn != State.TITLE) drawHud(g);
                 drawHelp(g);
                 break;
+            case ENDING:
+                drawHud(g);
+                drawEnding(g);
+                break;
             case REPORT:
                 drawHud(g);
                 drawReport(g);
@@ -1080,7 +1133,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
 
         g.setFont(font(12));
         g.setColor(new Color(200, 200, 200));
-        g.drawString("货舱", 690, 19);
+        g.drawString("货舱  $" + fmtMoney(p.cargoValue()), 690, 19);
         g.setFont(fontB(17));
         boolean full = p.cargoCount() >= p.cargoMax();
         g.setColor(full ? new Color(255, 90, 80) : Color.WHITE);
@@ -1137,6 +1190,18 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 int w = g.getFontMetrics().stringWidth(t);
                 outlined(g, t, (VW - w) / 2, 100, new Color(255, 70, 60), 255);
             }
+        }
+        // 货舱满了:常驻提醒
+        if (state == State.PLAY && p.cargoCount() >= p.cargoMax() && p.depthRows() > 0.5) {
+            String t = "货舱满了!再挖到的矿会丢掉 —— 回地面卖矿吧";
+            g.setFont(fontB(17));
+            int w = g.getFontMetrics().stringWidth(t) + 28;
+            int bx = (VW - w) / 2, by = 122;
+            g.setColor(new Color(0, 0, 0, 170));
+            g.fillRoundRect(bx, by, w, 32, 10, 10);
+            g.setColor(new Color(255, 170, 60));
+            g.drawRoundRect(bx, by, w, 32, 10, 10);
+            g.drawString(t, bx + 14, by + 22);
         }
         // 底部按键提示
         g.setFont(font(12));
@@ -1251,6 +1316,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                     "← →  (或 A D)    左右行驶",
                     "↑    (或 W)      喷气往上飞(很费油)",
                     "↓    (或 S)      向下钻",
+                    "往下掉的时候按住 ↑  可以快速刹车",
                     "贴着墙按住 ← / →  横着钻(不能往上钻)",
                     "#地面上",
                     "停在商店门口按 回车(或 E)  进店",
@@ -1271,7 +1337,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                     "越深的矿越值钱,但往回飞的路也越长 —— 算好来回的油",
                     "燃油条上的白线 = 飞回地面大约要的油;剩油快不够回程时会报警、屏幕闪红",
                     "停在地面不耗油;停在地下也会慢慢耗油,别在下面发呆",
-                    "地底最深处藏着 6 颗「熔岩之心」,一颗值 $30,000",
+                    "地底最深处藏着 6 颗「熔岩之心」—— 全部卖掉就通关!",
                 };
             case 3:
                 return new String[]{
@@ -1285,7 +1351,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                     "#瓦斯(看起来像普通泥土,细看有淡绿色斑点)",
                     "一挖就爆炸,扣车身并炸开周围的土",
                     "#摔落",
-                    "从高处掉下来速度太快会摔伤;车身归零同样会爆炸",
+                    "掉得太快会摔伤(最多扣 2 点),下落时按 ↑ 能刹车;车身归零同样会爆炸",
                 };
             default:
                 return new String[0];
@@ -1367,7 +1433,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
 
     void drawShopHelp(Graphics2D g, int x, int y) {
         String[] shops = {
-            "加油站:加油 $2/升,修车 $12/点(钱不够会尽量多加)",
+            "加油站:加油 $" + (int) FUEL_PRICE + "/升,修车 $" + (int) REPAIR_PRICE + "/点;没钱时可领免费救济油",
             "矿石收购站:把货舱里的矿全部卖掉",
             "改装厂:升级下面 6 种部件,每种 7 级,越往后越贵",
             "道具店:买消耗道具,在地下按对应键使用",
@@ -1424,7 +1490,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         g.drawString("暂停", x + 30, y + 48);
         g.setFont(font(13));
         g.setColor(new Color(200, 200, 200));
-        g.drawString("最深纪录 " + Math.round(p.maxDepth * METERS_PER_ROW) + " 米    熔岩之心 " + p.hearts + " 颗", x + 30, y + 76);
+        g.drawString("最深纪录 " + Math.round(p.maxDepth * METERS_PER_ROW) + " 米    熔岩之心 " + p.hearts + " / " + heartGoal(), x + 30, y + 76);
         drawList(g, PAUSE_ITEMS, x + 30, y + 130, w - 60);
         if (shopMsgTimer > 0) {
             g.setFont(fontB(15));
@@ -1486,6 +1552,43 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         };
         for (int i = 0; i < help.length; i++)
             g.drawString(help[i], (VW - g.getFontMetrics().stringWidth(help[i])) / 2, 470 + i * 26);
+    }
+
+    void drawEnding(Graphics2D g) {
+        int x = 190, y = 110, w = 580, h = 420;
+        panel(g, x, y, w, h);
+        for (int i = 0; i < 6; i++) {
+            double a = time * 0.8 + i * Math.PI / 3;
+            Art.star((Graphics2D) g, x + w / 2.0 + Math.cos(a) * 240, y + 60 + Math.sin(a) * 30, 6 + 2 * Math.sin(time * 3 + i), new Color(255, 210, 80));
+        }
+        g.setFont(fontB(40));
+        String t = "通关!";
+        g.setPaint(new GradientPaint(0, y + 40, new Color(255, 235, 130), 0, y + 90, new Color(255, 100, 20)));
+        g.drawString(t, x + (w - g.getFontMetrics().stringWidth(t)) / 2, y + 88);
+        g.setFont(font(18));
+        g.setColor(Color.WHITE);
+        String sub = "你把全部 " + heartGoal() + " 颗熔岩之心都挖了出来!";
+        g.drawString(sub, x + (w - g.getFontMetrics().stringWidth(sub)) / 2, y + 128);
+        String[] lines = {
+            "游戏用时      " + fmtTime(p.playTime),
+            "最深纪录      " + Math.round(p.maxDepth * METERS_PER_ROW) + " 米",
+            "累计卖矿收入  $" + fmtMoney(p.totalEarned),
+            "爆炸次数      " + p.deaths + " 次",
+        };
+        g.setFont(font(17));
+        for (int i = 0; i < lines.length; i++) {
+            g.setColor(new Color(230, 230, 230));
+            g.drawString(lines[i], x + 150, y + 190 + i * 36);
+        }
+        g.setFont(fontB(16));
+        g.setColor(new Color(255, 200, 80));
+        String k = "按 回车 继续自由挖矿";
+        g.drawString(k, x + (w - g.getFontMetrics().stringWidth(k)) / 2, y + h - 30);
+    }
+
+    static String fmtTime(double sec) {
+        long s = (long) sec;
+        return String.format("%d:%02d:%02d", s / 3600, (s / 60) % 60, s % 60);
     }
 
     void drawReport(Graphics2D g) {
@@ -1577,6 +1680,12 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 break;
             case REPORT:
                 if (ok && !repeat) respawn();
+                break;
+            case ENDING:
+                if (ok && !repeat) {
+                    state = State.PLAY;
+                    save();
+                }
                 break;
             case HELP: {
                 boolean leftK = k == KeyEvent.VK_LEFT || k == KeyEvent.VK_A;

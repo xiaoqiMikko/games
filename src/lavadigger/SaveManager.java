@@ -32,6 +32,10 @@ final class SaveManager {
         pr.setProperty("items", join(p.items));
         pr.setProperty("maxDepth", Integer.toString(p.maxDepth));
         pr.setProperty("hearts", Integer.toString(p.hearts));
+        pr.setProperty("deaths", Integer.toString(p.deaths));
+        pr.setProperty("totalEarned", Long.toString(p.totalEarned));
+        pr.setProperty("playTime", Double.toString(p.playTime));
+        pr.setProperty("won", Boolean.toString(p.won));
         File f = file();
         f.getParentFile().mkdirs();
         File tmp = new File(f.getPath() + ".tmp");
@@ -65,6 +69,10 @@ final class SaveManager {
             p.y = Double.parseDouble(pr.getProperty("y"));
             p.maxDepth = Integer.parseInt(pr.getProperty("maxDepth", "0"));
             p.hearts = Integer.parseInt(pr.getProperty("hearts", "0"));
+            p.deaths = Integer.parseInt(pr.getProperty("deaths", "0"));
+            p.totalEarned = Long.parseLong(pr.getProperty("totalEarned", "0"));
+            p.playTime = Double.parseDouble(pr.getProperty("playTime", "0"));
+            p.won = Boolean.parseBoolean(pr.getProperty("won", "false"));
             p.vx = p.vy = 0;
             p.digging = false;
             return true;

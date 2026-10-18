@@ -16,6 +16,10 @@ final class Player {
     int[] items = new int[Upgrades.ITEM_NAMES.length];
     int maxDepth;      // 最深纪录(格)
     int hearts;        // 卖出过的熔岩之心
+    int deaths;        // 爆炸次数
+    long totalEarned;  // 累计卖矿收入
+    double playTime;   // 游戏用时(秒)
+    boolean won;       // 已通关
 
     // 钻探中
     boolean digging;
@@ -29,6 +33,10 @@ final class Player {
         java.util.Arrays.fill(items, 0);
         maxDepth = 0;
         hearts = 0;
+        deaths = 0;
+        totalEarned = 0;
+        playTime = 0;
+        won = false;
         fuel = maxFuel();
         hull = maxHull();
         toSpawn();
