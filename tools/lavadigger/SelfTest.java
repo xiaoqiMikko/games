@@ -383,6 +383,101 @@ public final class SelfTest {
             gp.closeShop();
         }
 
+        // ===== 新矿种 =====
+        {
+            // 老地图补新矿:已有的矿不变,只在泥土里补
+            World ow = new World();
+            ow.generate(99);
+            for (int i = 0; i < ow.tiles.length; i++)
+                if (ow.tiles[i] >= World.ORE + Mineral.FIRST_V2) ow.tiles[i] = World.DIRT;
+            byte[] before = ow.tiles.clone();
+            ow.injectNewMinerals(Mineral.FIRST_V2, 0.6);
+            int added = 0;
+            boolean oldKept = true;
+            for (int i = 0; i < before.length; i++) {
+                if (before[i] != ow.tiles[i]) {
+                    if (before[i] != World.DIRT || ow.tiles[i] < World.ORE + Mineral.FIRST_V2) oldKept = false;
+                    added++;
+                }
+            }
+            System.out.println("老地图补新矿: " + added + " 格");
+            check(added > 300 && oldKept, "老地图只在泥土里补新矿,原有的不动");
+            // 第 1 版存档读档时自动补
+            SaveManager.enabled = true;
+            File vdir = new File(out, "v1save");
+            SaveManager.dirOverride = vdir;
+            World w1 = new World();
+            w1.generate(99);
+            for (int i = 0; i < w1.tiles.length; i++)
+                if (w1.tiles[i] >= World.ORE + Mineral.FIRST_V2) w1.tiles[i] = World.DIRT;
+            SaveManager.save(w1, gp.p);
+            File sf = SaveManager.file();
+            String txt = new String(java.nio.file.Files.readAllBytes(sf.toPath()), "ISO-8859-1").replace("version=3", "version=1");
+            java.nio.file.Files.write(sf.toPath(), txt.getBytes("ISO-8859-1"));
+            World w1b = new World();
+            Player p1b = new Player();
+            SaveManager.load(w1b, p1b);
+            int nNew = 0;
+            for (byte t : w1b.tiles) if (t >= World.ORE + Mineral.FIRST_V2) nNew++;
+            check(nNew > 300, "第 1 版存档读档后补上新矿 " + nNew + " 格");
+            SaveManager.dirOverride = null;
+            SaveManager.enabled = false;
+
+            // 所有矿石放大对照图
+            BufferedImage atlas = new BufferedImage(GamePanel.VW, GamePanel.VH, BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = atlas.createGraphics();
+            g.setColor(new Color(30, 25, 22));
+            g.fillRect(0, 0, GamePanel.VW, GamePanel.VH);
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            g.setFont(new Font(gp.fontName, Font.BOLD, 14));
+            for (int k = 0; k < Mineral.BY_VALUE.length; k++) {
+                int i = Mineral.BY_VALUE[k];
+                Mineral m = Mineral.ALL[i];
+                int ax = 12 + (k % 7) * 135, ay = 10 + (k / 7) * 158;
+                for (int v = 0; v < 2; v++)
+                    g.drawImage(gp.tex.ore[Textures.band(World.SURFACE + m.peakDepth)][i][v], ax + v * 62, ay, 58, 58, null);
+                g.drawImage(gp.tex.ore[Textures.band(World.SURFACE + m.peakDepth)][i][2], ax + 30, ay + 62, 58, 58, null);
+                g.setColor(Color.WHITE);
+                g.drawString(m.name + " $" + m.value, ax, ay + 140);
+            }
+            g.dispose();
+            ImageIO.write(atlas, "png", new File(out, "16-ore-atlas.png"));
+
+            // 收购站:货舱里有很多种矿
+            gp.respawn();
+            gp.p.level[Upgrades.CARGO] = 6;
+            java.util.Arrays.fill(gp.p.cargo, 0);
+            for (int i = 0; i < Mineral.ALL.length; i++) if (i != Mineral.HEART) gp.p.cargo[i] = 1 + i % 4;
+            gp.openShop(Shop.SELL);
+            shot(gp, "17-sell-many");
+            gp.closeShop();
+            java.util.Arrays.fill(gp.p.cargo, 0);
+            gp.p.level[Upgrades.CARGO] = 0;
+
+            // 地下特效:在车附近摆一圈贵重矿,截几帧
+            int bc = 20, br = World.SURFACE + 120;
+            for (int r = br - 4; r <= br + 4; r++) for (int c = bc - 8; c <= bc + 8; c++) gp.world.set(c, r, World.DIRT);
+            int[] show = {16, 17, 12, 19, 20, 23, 24, 25, 26, 27, 8, 7};
+            for (int k = 0; k < show.length; k++) gp.world.set(bc - 6 + k, br - 2, (byte) (World.ORE + show[k]));
+            for (int k = 0; k < show.length; k++) gp.world.set(bc - 6 + k, br + 2, (byte) (World.ORE + show[(k + 5) % show.length]));
+            for (int c = bc - 6; c <= bc + 6; c++) { gp.world.set(c, br, World.AIR); gp.world.set(c, br + 1, World.DIRT); }
+            gp.p.x = bc * World.T + 3;
+            gp.p.y = br * World.T + World.T - Player.H;
+            gp.p.fallStartY = gp.p.y;
+            gp.snapCamera();
+            for (int f = 0; f < 3; f++) {
+                gp.time += 0.37;
+                shot(gp, "18-ore-fx-" + f);
+            }
+            // 挖到矿的粒子
+            gp.world.set(bc + 1, br, (byte) (World.ORE + 15));
+            int before2 = gp.particles.size();
+            hold(gp, KeyEvent.VK_RIGHT, 4);
+            check(gp.p.cargo[15] == 1 && gp.particles.size() > before2, "挖到矿有粒子特效");
+            java.util.Arrays.fill(gp.p.cargo, 0);
+            gp.respawn();
+        }
+
         // 存读档往返
         SaveManager.enabled = true;
         String home = System.getProperty("user.home");

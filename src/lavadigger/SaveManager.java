@@ -84,7 +84,7 @@ final class SaveManager {
     static void save(World w, Player p) {
         if (!enabled) return;
         Properties pr = new Properties();
-        pr.setProperty("version", "1");
+        pr.setProperty("version", "3");
         pr.setProperty("seed", Long.toString(w.seed));
         pr.setProperty("tiles", Base64.getEncoder().encodeToString(w.tiles));
         pr.setProperty("money", Integer.toString(p.money));
@@ -123,6 +123,10 @@ final class SaveManager {
             if (tiles.length != World.COLS * World.ROWS) return false;
             w.tiles = tiles;
             w.seed = Long.parseLong(pr.getProperty("seed"));
+            // 老存档补上之后版本新增的矿
+            int ver = Integer.parseInt(pr.getProperty("version", "1"));
+            if (ver < 2) w.injectNewMinerals(Mineral.FIRST_V2, 0.6);
+            else if (ver < 3) w.injectNewMinerals(Mineral.FIRST_V3, 0.35);
             p.money = Integer.parseInt(pr.getProperty("money"));
             split(pr.getProperty("cargo"), p.cargo);
             split(pr.getProperty("level"), p.level);

@@ -155,7 +155,7 @@ final class Textures {
         Graphics2D g = im.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         Mineral mi = Mineral.ALL[m];
-        if (m == Mineral.HEART) {
+        if (mi.style == Mineral.HEART_STYLE) {
             heart(g);
             g.dispose();
             return im;
@@ -165,20 +165,359 @@ final class Textures {
         java.util.List<double[]> pos = new java.util.ArrayList<>();
         for (double[] sl : slots) pos.add(new double[]{sl[0] + rnd.nextInt(5) - 2, sl[1] + rnd.nextInt(5) - 2});
         java.util.Collections.shuffle(pos, rnd);
-        if (m == 0) {
-            for (int i = 0; i < 3; i++) coal(g, pos.get(i)[0], pos.get(i)[1], 5 + rnd.nextInt(2), rnd);
-        } else if (m <= 4) {
-            vein(g, mi.color, rnd);
-            int n = m <= 2 ? 3 : 3 + rnd.nextInt(2);
-            for (int i = 0; i < n; i++) nugget(g, pos.get(i)[0], pos.get(i)[1], 3.6 + rnd.nextDouble() * 1.6, mi.color, rnd);
-        } else {
-            // 宝石:两颗大的,有时再加一颗小的
-            gem(g, pos.get(0)[0], pos.get(0)[1], 6.5, mi.color, m);
-            gem(g, pos.get(1)[0], pos.get(1)[1], 5.5, mi.color, m);
-            if (rnd.nextBoolean()) gem(g, pos.get(2)[0], pos.get(2)[1], 3.5, mi.color, m);
+        switch (mi.style) {
+            case Mineral.COAL:
+                for (int i = 0; i < 3; i++) coal(g, pos.get(i)[0], pos.get(i)[1], 5 + rnd.nextInt(2), rnd);
+                break;
+            case Mineral.NUGGET: {
+                vein(g, mi.color, rnd);
+                int n = mi.value < 100 ? 3 : 3 + rnd.nextInt(2);
+                for (int i = 0; i < n; i++) nugget(g, pos.get(i)[0], pos.get(i)[1], 3.6 + rnd.nextDouble() * 1.6, mi.color, rnd);
+                break;
+            }
+            case Mineral.CRYSTAL:
+                crystalCluster(g, 9 + rnd.nextInt(14), 24 + rnd.nextInt(4), mi.color, rnd, 1.0);
+                if (rnd.nextBoolean()) crystalCluster(g, 6 + rnd.nextInt(20), 12 + rnd.nextInt(4), mi.color, rnd, 0.6);
+                break;
+            case Mineral.AMBER:
+                amber(g, pos.get(0)[0], pos.get(0)[1], 6.5, rnd, true);
+                amber(g, pos.get(1)[0], pos.get(1)[1], 4.5, rnd, false);
+                break;
+            case Mineral.FOSSIL:
+                ammonite(g, 15 + rnd.nextInt(3), 15 + rnd.nextInt(3), 9, mi.color, rnd.nextDouble() * Math.PI * 2);
+                bone(g, pos.get(4)[0] > 16 ? 5 : 20, rnd.nextBoolean() ? 6 : 27, mi.color, rnd);
+                break;
+            case Mineral.OPAL:
+                opal(g, pos.get(0)[0], pos.get(0)[1], 7, rnd);
+                opal(g, pos.get(1)[0], pos.get(1)[1], 4.5, rnd);
+                break;
+            case Mineral.METEOR:
+                meteor(g, 16 + rnd.nextInt(3) - 1, 16 + rnd.nextInt(3) - 1, 10, mi.color, rnd);
+                break;
+            case Mineral.CUBE:
+                for (int i = 0; i < 4; i++) cube(g, pos.get(i)[0], pos.get(i)[1], 3 + rnd.nextInt(2), mi.color);
+                break;
+            case Mineral.BANDED:
+                banded(g, pos.get(0)[0], pos.get(0)[1], 7, mi.color, rnd);
+                banded(g, pos.get(1)[0], pos.get(1)[1], 4.5, mi.color, rnd);
+                break;
+            case Mineral.MATRIX:
+                matrix(g, pos.get(0)[0], pos.get(0)[1], 6.5, mi.color, rnd);
+                matrix(g, pos.get(1)[0], pos.get(1)[1], 4.5, mi.color, rnd);
+                break;
+            case Mineral.MOON:
+                moon(g, pos.get(0)[0], pos.get(0)[1], 6.5, mi.color);
+                moon(g, pos.get(1)[0], pos.get(1)[1], 4.5, mi.color);
+                break;
+            case Mineral.STARCORE:
+                starcore(g, 16, 16, 9, mi.color, rnd);
+                break;
+            default:
+                // 切割宝石:两颗大的,有时再加一颗小的
+                gem(g, pos.get(0)[0], pos.get(0)[1], 6.5, mi.color, m);
+                gem(g, pos.get(1)[0], pos.get(1)[1], 5.5, mi.color, m);
+                if (rnd.nextBoolean()) gem(g, pos.get(2)[0], pos.get(2)[1], 3.5, mi.color, m);
         }
         g.dispose();
         return im;
+    }
+
+    /** 岩盐:小立方体晶块(等轴测画法) */
+    private static void cube(Graphics2D g, double cx, double cy, double s, Color c) {
+        double[] t = {cx, cy - s}, r = {cx + s, cy - s * 0.5}, b = {cx, cy}, l = {cx - s, cy - s * 0.5};
+        double[] rb = {cx + s, cy + s * 0.5}, bb = {cx, cy + s}, lb = {cx - s, cy + s * 0.5};
+        g.setColor(mul(c, 0.35));
+        g.translate(0.7, 0.8);
+        g.fill(poly(t, r, rb, bb, lb, l));
+        g.translate(-0.7, -0.8);
+        g.setColor(new Color(Math.min(255, c.getRed() + 13), Math.min(255, c.getGreen() + 40), Math.min(255, c.getBlue() + 40), 230));
+        g.fill(poly(t, r, b, l));                        // 顶面
+        g.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 225));
+        g.fill(poly(l, b, bb, lb));                      // 左面
+        g.setColor(new Color(mul(c, 0.78).getRed(), mul(c, 0.78).getGreen(), mul(c, 0.78).getBlue(), 225));
+        g.fill(poly(b, r, rb, bb));                      // 右面
+        g.setStroke(new BasicStroke(0.5f));
+        g.setColor(mul(c, 0.55));
+        g.draw(poly(t, r, rb, bb, lb, l));
+        g.setStroke(new BasicStroke(1f));
+        g.setColor(new Color(255, 255, 255, 220));
+        g.fill(new Rectangle2D.Double(cx - s * 0.3, cy - s * 0.65, 1.3, 1.3));
+    }
+
+    /** 孔雀石:深浅绿色同心条纹 */
+    private static void banded(Graphics2D g, double cx, double cy, double s, Color c, Random rnd) {
+        Path2D.Double p = blob(cx, cy, s, 9, 0.8, rnd);
+        g.setColor(mul(c, 0.3));
+        g.translate(0.8, 1);
+        g.fill(p);
+        g.translate(-0.8, -1);
+        Shape oc = g.getClip();
+        g.clip(p);
+        double ox = cx + (rnd.nextDouble() - 0.5) * s, oy = cy + (rnd.nextDouble() - 0.5) * s;
+        for (int i = 8; i >= 0; i--) {
+            double rr = (i + 1) * s * 0.28;
+            g.setColor(i % 2 == 0 ? lighten(c, 50) : mul(c, 0.6));
+            g.fill(new Ellipse2D.Double(ox - rr, oy - rr * 0.8, rr * 2, rr * 1.6));
+        }
+        g.setClip(oc);
+        g.setStroke(new BasicStroke(0.7f));
+        g.setColor(mul(c, 0.4));
+        g.draw(p);
+        g.setStroke(new BasicStroke(1f));
+        g.setColor(new Color(255, 255, 255, 200));
+        g.fill(new Ellipse2D.Double(cx - s * 0.5, cy - s * 0.55, 2, 1.4));
+    }
+
+    /** 绿松石:天蓝色块,带深色网状纹 */
+    private static void matrix(Graphics2D g, double cx, double cy, double s, Color c, Random rnd) {
+        Path2D.Double p = blob(cx, cy, s, 8, 0.78, rnd);
+        g.setColor(mul(c, 0.3));
+        g.translate(0.8, 1);
+        g.fill(p);
+        g.translate(-0.8, -1);
+        g.setPaint(new RadialGradientPaint((float) (cx - s * 0.3), (float) (cy - s * 0.35), (float) (s * 1.5),
+            new float[]{0f, 1f}, new Color[]{lighten(c, 60), mul(c, 0.75)}));
+        g.fill(p);
+        Shape oc = g.getClip();
+        g.clip(p);
+        g.setStroke(new BasicStroke(0.7f));
+        g.setColor(new Color(70, 55, 40, 200));
+        for (int k = 0; k < 4; k++) {
+            Path2D.Double v = new Path2D.Double();
+            double x = cx - s + rnd.nextDouble() * s * 2, y = cy - s;
+            v.moveTo(x, y);
+            for (int i = 0; i < 4; i++) {
+                x += (rnd.nextDouble() - 0.5) * s;
+                y += s * 0.55;
+                v.lineTo(x, y);
+            }
+            g.draw(v);
+        }
+        g.setClip(oc);
+        g.setStroke(new BasicStroke(1f));
+        g.setColor(new Color(255, 255, 255, 210));
+        g.fill(new Ellipse2D.Double(cx - s * 0.5, cy - s * 0.55, 2.2, 1.5));
+    }
+
+    /** 月光石:乳白半透明圆石,中间一抹蓝色光 */
+    private static void moon(Graphics2D g, double cx, double cy, double s, Color c) {
+        Ellipse2D.Double e = new Ellipse2D.Double(cx - s, cy - s * 0.85, s * 2, s * 1.7);
+        g.setColor(new Color(50, 60, 90));
+        g.translate(0.8, 1);
+        g.fill(e);
+        g.translate(-0.8, -1);
+        g.setPaint(new RadialGradientPaint((float) (cx - s * 0.2), (float) (cy - s * 0.2), (float) (s * 1.3),
+            new float[]{0f, 0.5f, 1f}, new Color[]{new Color(250, 252, 255), c, new Color(150, 165, 200)}));
+        g.fill(e);
+        g.setColor(new Color(120, 170, 255, 150));
+        g.fill(new Ellipse2D.Double(cx - s * 0.55, cy - s * 0.15, s * 1.1, s * 0.5));
+        g.setStroke(new BasicStroke(0.6f));
+        g.setColor(new Color(130, 145, 185));
+        g.draw(e);
+        g.setStroke(new BasicStroke(1f));
+        g.setColor(Color.WHITE);
+        g.fill(new Ellipse2D.Double(cx - s * 0.5, cy - s * 0.55, 2.4, 1.6));
+    }
+
+    /** 星核:黑紫色球体,里面是点点星空 */
+    private static void starcore(Graphics2D g, double cx, double cy, double r, Color c, Random rnd) {
+        g.setPaint(new RadialGradientPaint((float) cx, (float) cy, (float) (r * 1.6), new float[]{0f, 1f},
+            new Color[]{new Color(c.getRed(), c.getGreen(), c.getBlue(), 140), new Color(c.getRed(), c.getGreen(), c.getBlue(), 0)}));
+        g.fill(new Ellipse2D.Double(cx - r * 1.6, cy - r * 1.6, r * 3.2, r * 3.2));
+        Ellipse2D.Double e = new Ellipse2D.Double(cx - r, cy - r, r * 2, r * 2);
+        g.setPaint(new RadialGradientPaint((float) (cx - r * 0.3), (float) (cy - r * 0.3), (float) (r * 1.4),
+            new float[]{0f, 0.6f, 1f}, new Color[]{lighten(c, 40), new Color(30, 10, 60), new Color(8, 4, 20)}));
+        g.fill(e);
+        Shape oc = g.getClip();
+        g.clip(e);
+        for (int i = 0; i < 14; i++) {
+            double a = rnd.nextDouble() * Math.PI * 2, rr = rnd.nextDouble() * r;
+            int br = 160 + rnd.nextInt(95);
+            g.setColor(new Color(br, br, 255));
+            double sz = rnd.nextDouble() < 0.2 ? 1.6 : 0.9;
+            g.fill(new Ellipse2D.Double(cx + Math.cos(a) * rr - sz / 2, cy + Math.sin(a) * rr - sz / 2, sz, sz));
+        }
+        g.setColor(new Color(200, 150, 255, 90));
+        g.setStroke(new BasicStroke(1.2f));
+        g.draw(new Arc2D.Double(cx - r * 0.7, cy - r * 0.35, r * 1.4, r * 0.7, 0, 360, Arc2D.OPEN));
+        g.setClip(oc);
+        g.setStroke(new BasicStroke(0.8f));
+        g.setColor(new Color(170, 120, 255));
+        g.draw(e);
+        g.setStroke(new BasicStroke(1f));
+        g.setColor(new Color(255, 255, 255, 230));
+        g.fill(new Ellipse2D.Double(cx - r * 0.55, cy - r * 0.6, 2.6, 1.8));
+    }
+
+    /** 水晶簇:几根六棱柱从底部斜着长出来 */
+    private static void crystalCluster(Graphics2D g, double bx, double by, Color c, Random rnd, double scale) {
+        int n = 3;
+        double[] ang = {-0.45, 0.05, 0.5};
+        double[] len = {9, 13, 8};
+        for (int k = 0; k < n; k++) {
+            double a = ang[k] + (rnd.nextDouble() - 0.5) * 0.2, L = len[k] * scale * (0.85 + rnd.nextDouble() * 0.3), w = 2.6 * scale;
+            AffineTransform old = g.getTransform();
+            g.translate(bx + (k - 1) * 3 * scale, by);
+            g.rotate(a);
+            Path2D.Double body = poly(new double[]{-w, 0}, new double[]{-w, -L}, new double[]{0, -L - w * 1.4},
+                new double[]{w, -L}, new double[]{w, 0});
+            g.setColor(mul(c, 0.35));
+            g.translate(0.7, 0.7);
+            g.fill(body);
+            g.translate(-0.7, -0.7);
+            g.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 215));
+            g.fill(body);
+            g.setColor(lighten(c, 55));
+            g.fill(poly(new double[]{-w, 0}, new double[]{-w, -L}, new double[]{0, -L - w * 1.4}, new double[]{0, 0}));
+            g.setColor(mul(c, 0.55));
+            g.setStroke(new BasicStroke(0.6f));
+            g.draw(body);
+            g.setColor(new Color(255, 255, 255, 220));
+            g.draw(new Line2D.Double(-w * 0.45, -1, -w * 0.45, -L + 1));
+            g.setStroke(new BasicStroke(1f));
+            g.setTransform(old);
+        }
+    }
+
+    /** 琥珀:半透明橙色圆块,里面封着一只小虫 */
+    private static void amber(Graphics2D g, double cx, double cy, double s, Random rnd, boolean bug) {
+        Path2D.Double p = blob(cx, cy, s, 9, 0.8, rnd);
+        g.setColor(new Color(120, 60, 0, 200));
+        g.translate(0.8, 1);
+        g.fill(p);
+        g.translate(-0.8, -1);
+        g.setPaint(new RadialGradientPaint((float) (cx - s * 0.3), (float) (cy - s * 0.35), (float) (s * 1.5),
+            new float[]{0f, 0.6f, 1f}, new Color[]{new Color(255, 225, 120, 240), new Color(240, 150, 25, 230), new Color(170, 80, 5, 230)}));
+        g.fill(p);
+        if (bug) {
+            g.setColor(new Color(60, 30, 10, 200));
+            g.fill(new Ellipse2D.Double(cx - 1.5, cy - 0.5, 3, 2.2));
+            g.setStroke(new BasicStroke(0.5f));
+            for (int i = -1; i <= 1; i++) {
+                g.draw(new Line2D.Double(cx - 1, cy + 0.5 + i * 0.6, cx - 2.8, cy + 1 + i * 1.2));
+                g.draw(new Line2D.Double(cx + 1, cy + 0.5 + i * 0.6, cx + 2.8, cy + 1 + i * 1.2));
+            }
+            g.setStroke(new BasicStroke(1f));
+        }
+        g.setColor(new Color(255, 250, 220, 230));
+        g.fill(new Ellipse2D.Double(cx - s * 0.55, cy - s * 0.6, 2.4, 1.6));
+    }
+
+    /** 菊石化石:螺旋壳 + 放射状纹路 */
+    private static void ammonite(Graphics2D g, double cx, double cy, double r, Color c, double rot) {
+        g.setColor(mul(c, 0.4));
+        g.fill(new Ellipse2D.Double(cx - r + 0.8, cy - r + 1, r * 2, r * 2));
+        g.setPaint(new RadialGradientPaint((float) (cx - r * 0.3), (float) (cy - r * 0.3), (float) (r * 1.4),
+            new float[]{0f, 1f}, new Color[]{lighten(c, 25), mul(c, 0.75)}));
+        g.fill(new Ellipse2D.Double(cx - r, cy - r, r * 2, r * 2));
+        // 螺旋线
+        Path2D.Double sp = new Path2D.Double();
+        for (int i = 0; i <= 80; i++) {
+            double t = i / 80.0, a = rot + t * Math.PI * 4.2, rr = r * 0.92 * (1 - t * 0.9);
+            double x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+            if (i == 0) sp.moveTo(x, y);
+            else sp.lineTo(x, y);
+        }
+        g.setStroke(new BasicStroke(1.1f));
+        g.setColor(mul(c, 0.5));
+        g.draw(sp);
+        // 放射纹
+        g.setStroke(new BasicStroke(0.6f));
+        g.setColor(mul(c, 0.62));
+        for (int i = 0; i < 14; i++) {
+            double a = rot + i * Math.PI * 2 / 14;
+            g.draw(new Line2D.Double(cx + Math.cos(a) * r * 0.55, cy + Math.sin(a) * r * 0.55, cx + Math.cos(a) * r * 0.95, cy + Math.sin(a) * r * 0.95));
+        }
+        g.setStroke(new BasicStroke(0.8f));
+        g.setColor(mul(c, 0.45));
+        g.draw(new Ellipse2D.Double(cx - r, cy - r, r * 2, r * 2));
+        g.setStroke(new BasicStroke(1f));
+        g.setColor(new Color(255, 250, 235, 200));
+        g.fill(new Ellipse2D.Double(cx - r * 0.6, cy - r * 0.65, 2.2, 1.6));
+    }
+
+    /** 小骨头 */
+    private static void bone(Graphics2D g, double cx, double cy, Color c, Random rnd) {
+        AffineTransform old = g.getTransform();
+        g.translate(cx, cy);
+        g.rotate((rnd.nextDouble() - 0.5) * 1.2);
+        g.setColor(mul(c, 0.45));
+        g.fill(new RoundRectangle2D.Double(-4, -0.8, 8, 2.6, 2, 2));
+        g.setColor(c);
+        g.fill(new RoundRectangle2D.Double(-4, -1.3, 8, 2.4, 2, 2));
+        for (int sx : new int[]{-4, 4})
+            for (int sy : new int[]{-1, 1}) g.fill(new Ellipse2D.Double(sx - 1.4, sy - 1.6, 2.6, 2.6));
+        g.setTransform(old);
+    }
+
+    /** 欧泊:乳白色椭圆里布满彩色斑点 */
+    private static void opal(Graphics2D g, double cx, double cy, double s, Random rnd) {
+        Ellipse2D.Double e = new Ellipse2D.Double(cx - s, cy - s * 0.78, s * 2, s * 1.56);
+        g.setColor(new Color(40, 60, 70));
+        g.translate(0.8, 1);
+        g.fill(e);
+        g.translate(-0.8, -1);
+        g.setPaint(new RadialGradientPaint((float) (cx - s * 0.3), (float) (cy - s * 0.3), (float) (s * 1.4),
+            new float[]{0f, 1f}, new Color[]{new Color(235, 250, 248), new Color(150, 200, 205)}));
+        g.fill(e);
+        Shape oc = g.getClip();
+        g.clip(e);
+        Color[] fire = {new Color(255, 90, 140), new Color(80, 230, 120), new Color(70, 140, 255), new Color(255, 220, 60), new Color(190, 90, 255)};
+        for (int i = 0; i < 12; i++) {
+            Color f = fire[rnd.nextInt(fire.length)];
+            g.setColor(new Color(f.getRed(), f.getGreen(), f.getBlue(), 170));
+            double px = cx + (rnd.nextDouble() - 0.5) * s * 1.8, py = cy + (rnd.nextDouble() - 0.5) * s * 1.4, ps = 1.5 + rnd.nextDouble() * 2.2;
+            g.fill(new Ellipse2D.Double(px - ps / 2, py - ps / 2, ps, ps * 0.8));
+        }
+        g.setClip(oc);
+        g.setStroke(new BasicStroke(0.7f));
+        g.setColor(new Color(90, 130, 140));
+        g.draw(e);
+        g.setStroke(new BasicStroke(1f));
+        g.setColor(new Color(255, 255, 255, 230));
+        g.fill(new Ellipse2D.Double(cx - s * 0.55, cy - s * 0.5, 2.4, 1.6));
+    }
+
+    /** 陨铁:粗糙的深色金属块,裂缝里透出蓝光,表面有金属亮点 */
+    private static void meteor(Graphics2D g, double cx, double cy, double s, Color c, Random rnd) {
+        Path2D.Double p = blob(cx, cy, s, 11, 0.7, rnd);
+        g.setColor(new Color(15, 12, 22));
+        g.translate(1, 1.2);
+        g.fill(p);
+        g.translate(-1, -1.2);
+        g.setPaint(new RadialGradientPaint((float) (cx - s * 0.35), (float) (cy - s * 0.4), (float) (s * 1.5),
+            new float[]{0f, 1f}, new Color[]{lighten(c, 45), mul(c, 0.4)}));
+        g.fill(p);
+        Shape oc = g.getClip();
+        g.clip(p);
+        // 发光裂缝
+        g.setStroke(new BasicStroke(1.3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        for (int k = 0; k < 3; k++) {
+            Path2D.Double cr = new Path2D.Double();
+            double x = cx + (rnd.nextDouble() - 0.5) * s, y = cy - s;
+            cr.moveTo(x, y);
+            for (int i = 0; i < 5; i++) {
+                x += (rnd.nextDouble() - 0.5) * 5;
+                y += s * 0.45;
+                cr.lineTo(x, y);
+            }
+            g.setColor(new Color(90, 220, 255, 110));
+            g.setStroke(new BasicStroke(2.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.draw(cr);
+            g.setColor(new Color(190, 250, 255));
+            g.setStroke(new BasicStroke(0.9f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.draw(cr);
+        }
+        // 撞击坑
+        g.setColor(mul(c, 0.3));
+        for (int i = 0; i < 4; i++) {
+            double px = cx + (rnd.nextDouble() - 0.5) * s * 1.3, py = cy + (rnd.nextDouble() - 0.5) * s * 1.3;
+            g.fill(new Ellipse2D.Double(px - 1.2, py - 1, 2.4, 2));
+        }
+        g.setClip(oc);
+        g.setStroke(new BasicStroke(1f));
+        g.setColor(new Color(230, 235, 255));
+        for (int i = 0; i < 3; i++) g.fill(new Rectangle2D.Double(cx + (rnd.nextDouble() - 0.6) * s, cy + (rnd.nextDouble() - 0.6) * s, 1.2, 1.2));
     }
 
     private static void vein(Graphics2D g, Color c, Random rnd) {

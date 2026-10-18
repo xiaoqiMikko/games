@@ -36,6 +36,7 @@ java -cp "$S/testcls" lavadigger.SelfTest "$S/shots"     # 退出码 0 = 全部�
 - **钻探不走物理**:`startDig` 记下起止坐标,`digProgress` 插值移动车辆,`finishDig` 结算该格(矿入货舱 / 熔岩扣血 / 瓦斯 3×3 爆炸)。只能向下钻,或在地面上贴墙横向钻,不能向上钻。
 - **`World`**:`byte[]` 网格(48×420,每格 32px,第 8 行 `SURFACE` 是地表)。矿物编码为 `ORE + 矿物下标`。`generate(seed)` 按深度概率生成,再做成团扩散、挖空洞、单独摆放 6 颗熔岩之心,最后清理出生点。
 - **数值表集中在两处**:`Upgrades`(6 种部件 × 7 档的数值和价格、道具)和 `Mineral`(价值和深度分布);油耗、油价、摔落阈值、救援费等常量在 `GamePanel` 顶部。调平衡只改这三处。
+- **加矿种的规矩**:`Mineral.ALL` 的下标就是存档里的格子编码(`ORE + 下标`),**只能往数组末尾追加**,不能插队、删除或改顺序。追加一批新矿时:记下这批的起始下标(如 `FIRST_V3`),把 `SaveManager` 写出的 `version` 加 1,并在 `load` 里对低版本存档调用 `World.injectNewMinerals(起始下标, 比例)`,往没挖过的泥土里补新矿。贴图样式看 `style`(`Textures.makeOre`),动态特效看 `fx`(`GamePanel.drawOreEffects`,画在黑暗遮罩之后)。挖掘硬度由价格决定(`Mineral.hardness`)。
 - **`Shop`**:四家商店的列位置决定了地表哪几格是水泥(`World.generate` 用 `isUnderShop`),以及进店判定(`Shop.at`)。挪动商店位置会同时影响这两处。
 - **`Art`**:商店和矿车用 Java2D 矢量绘制(每帧绘制,带动画),`GamePanel.drawShop` 和 `drawVehicle` 只负责转调。
 - **`Textures`**:全部贴图在启动时用代码生成,没有图片资源;土层颜色按深度分 5 档(`band()`)。**`Sfx`** 用代码合成 PCM 音效,声卡不可用时静默。

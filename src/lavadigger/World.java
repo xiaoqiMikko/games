@@ -48,10 +48,27 @@ final class World {
         byte t = get(c, r);
         int d = Math.max(0, r - SURFACE);
         double base;
-        if (t >= ORE) base = 1.15 + 0.1 * (t - ORE);
+        if (t >= ORE) base = Mineral.ALL[t - ORE].hardness();
         else if (t == LAVA) base = 1.25;
         else base = 1.0;
         return base * (1 + d / 250.0);
+    }
+
+    /**
+     * 老存档(第 1 版地图)没有第 2 版新增的矿:在还没挖过的泥土里按深度补进去。
+     * 用地图种子做随机数,同一个存档补出来的结果固定。
+     */
+    void injectNewMinerals(int from, double share) {
+        Random rnd = new Random(seed ^ (0x5EEDL + from));
+        for (int r = SURFACE + 2; r < ROWS - 3; r++) {
+            int d = r - SURFACE;
+            double p = Math.min(0.2, 0.09 + d * 0.00025) * share;
+            for (int c = 0; c < COLS; c++) {
+                if (get(c, r) != DIRT || rnd.nextDouble() >= p) continue;
+                int m = Mineral.pick(d, rnd, from);
+                if (m >= 0) set(c, r, (byte) (ORE + m));
+            }
+        }
     }
 
     void generate(long seed) {

@@ -418,6 +418,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 p.cargo[m]++;
                 addText(cx, cy - 14, "+" + mi.name + "  $" + mi.value, brighten(mi.color));
                 sfx.pick();
+                spawnPickup(cx, cy, mi);
                 if (m == Mineral.HEART) addText(cx, cy - 34, "传说中的熔岩之心!!", new Color(255, 160, 40));
             } else {
                 addText(cx, cy - 14, "货舱满了! " + mi.name + "掉了", new Color(255, 90, 80));
@@ -936,6 +937,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         if (!(state == State.EXPLODING && explodeTimer > 0.1) && state != State.REPORT) drawVehicle(g, p.x - ox, p.y - oy);
         drawParticles(g, ox, oy);
         drawDarkness(g, ox, oy);
+        drawOreEffects(g, ox, oy);
         drawTexts(g, ox, oy);
 
         switch (state) {
@@ -1029,7 +1031,6 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                     continue;
                 }
                 g.drawImage(tex.tile(t, c, r, time), x, y, null);
-                if (t >= World.ORE + 3) sparkle(g, c, r, x, y);
             }
         }
         // 和空洞相邻的边加暗边,更有立体感
@@ -1046,17 +1047,177 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         }
     }
 
-    /** 银矿以上的贵重矿石偶尔闪一下 */
-    void sparkle(Graphics2D g, int c, int r, int x, int y) {
-        int h = Textures.hash(c * 7 + 3, r * 13 + 1);
-        double phase = (time * 0.6 + (h % 1000) / 1000.0 * 3) % 3;   // 每 5 秒左右闪一次
-        if (phase > 0.35) return;
-        double k = Math.sin(phase / 0.35 * Math.PI);
-        double sx = x + 6 + (h >> 4) % 20, sy = y + 6 + (h >> 9) % 20, len = 2 + 4 * k;
-        g.setColor(new Color(255, 255, 255, (int) (230 * k)));
-        g.fillRect((int) (sx - len), (int) sy, (int) (len * 2 + 1), 1);
-        g.fillRect((int) sx, (int) (sy - len), 1, (int) (len * 2 + 1));
-        g.fillRect((int) sx - 1, (int) sy - 1, 3, 3);
+    static boolean twinkles(Mineral m) {
+        return m.value >= 140 || m.style == Mineral.CRYSTAL || m.style == Mineral.CUBE;
+    }
+
+    /**
+     * 矿石特效,画在黑暗遮罩之后:在地下也能看到远处的矿在黑暗里闪(离车越远越暗)。
+     */
+    void drawOreEffects(Graphics2D g, int ox, int oy) {
+        int c0 = Math.max(0, ox / T), c1 = Math.min(World.COLS - 1, (ox + VW) / T);
+        int r0 = Math.max(World.SURFACE, oy / T), r1 = Math.min(World.ROWS - 1, (oy + VH) / T);
+        double pcx = p.x + Player.W / 2.0, pcy = p.y + Player.H / 2.0;
+        boolean dark = p.depthRows() > 3;
+        Art.aa(g, true);
+        Shape oc = g.getClip();
+        for (int r = r0; r <= r1; r++)
+            for (int c = c0; c <= c1; c++) {
+                int m = World.mineralOf(world.get(c, r));
+                if (m < 0) continue;
+                Mineral mi = Mineral.ALL[m];
+                int x = c * T - ox, y = r * T - oy;
+                double dist = Math.hypot(c * T + 16 - pcx, r * T + 16 - pcy);
+                double lit = dark ? Math.max(0.3, Math.min(1, 1 - (dist - 160) / 320)) : 1;
+                int h = Textures.hash(c * 7 + 3, r * 13 + 1);
+                double seed = (h % 1000) / 1000.0;
+                switch (mi.fx) {
+                    case Mineral.FX_OPAL: {
+                        float hue = (float) ((time * 0.25 + seed) % 1.0);
+                        Color sh = Color.getHSBColor(hue, 0.7f, 1f);
+                        g.setColor(new Color(sh.getRed(), sh.getGreen(), sh.getBlue(), (int) (70 * lit)));
+                        g.fill(new Ellipse2D.Double(x + 6, y + 8, 20, 16));
+                        break;
+                    }
+                    case Mineral.FX_METEOR:
+                        glow(g, x, y, 18, new Color(90, 220, 255), 110 * pulse(2.2, seed) * lit);
+                        break;
+                    case Mineral.FX_AMBER:
+                        glow(g, x, y, 17, new Color(255, 180, 60), 70 * pulse(1.5, seed) * lit);
+                        break;
+                    case Mineral.FX_MOON:
+                        glow(g, x, y, 20, new Color(170, 205, 255), (40 + 80 * pulse(1.1, seed)) * lit);
+                        break;
+                    case Mineral.FX_PINK:
+                        glow(g, x, y, 19, new Color(255, 130, 200), (30 + 70 * pulse(1.8, seed)) * lit);
+                        break;
+                    case Mineral.FX_HEART: {
+                        double k = pulse(3, 0);
+                        float rad = (float) (22 + 8 * k);
+                        g.setPaint(new RadialGradientPaint(x + 16f, y + 16f, rad, new float[]{0f, 1f},
+                            new Color[]{new Color(255, 150, 40, (int) (150 * k + 60)), new Color(255, 80, 0, 0)}));
+                        g.fill(new Ellipse2D.Double(x + 16 - rad, y + 16 - rad, rad * 2, rad * 2));
+                        break;
+                    }
+                    case Mineral.FX_FUMES:
+                        // 淡黄色烟雾慢慢往上飘
+                        for (int k = 0; k < 2; k++) {
+                            double ph = (time * 0.45 + k * 0.5 + seed) % 1.0;
+                            double px = x + 9 + k * 12 + Math.sin(ph * 6 + k) * 2.5, py = y + 22 - ph * 30;
+                            int a = (int) (Math.sin(ph * Math.PI) * 75 * lit);
+                            g.setColor(new Color(240, 225, 90, a));
+                            g.fill(new Ellipse2D.Double(px - 3 - ph * 2, py - 2.5 - ph, 6 + ph * 4, 5 + ph * 2));
+                        }
+                        break;
+                    case Mineral.FX_SHEEN: {
+                        // 一道光斜着扫过
+                        double ph = (time * 0.4 + seed * 2) % 2.0;
+                        if (ph < 1) {
+                            double bx = x - 10 + ph * 52;
+                            g.clipRect(x, y, T, T);
+                            g.setColor(new Color(255, 255, 255, (int) (70 * lit)));
+                            g.fill(new Polygon(new int[]{(int) bx, (int) bx + 6, (int) bx - 6, (int) bx - 12},
+                                new int[]{y, y, y + T, y + T}, 4));
+                            g.setClip(oc);
+                        }
+                        break;
+                    }
+                    case Mineral.FX_LIGHTNING: {
+                        glow(g, x, y, 17, new Color(150, 130, 255), 45 * lit);
+                        // 每 1.6 秒左右噼啪一下,每次形状不同
+                        double period = 1.6;
+                        double ph = (time + seed * period) % period;
+                        if (ph < 0.18) {
+                            long cycle = (long) ((time + seed * period) / period);
+                            Random lr = new Random(h * 31L + cycle);
+                            double ax = x + 4 + lr.nextInt(10), ay = y + 4 + lr.nextInt(24);
+                            double bx2 = x + 18 + lr.nextInt(10), by2 = y + 4 + lr.nextInt(24);
+                            Path2D.Double bolt = new Path2D.Double();
+                            bolt.moveTo(ax, ay);
+                            for (int i = 1; i < 5; i++) {
+                                double t = i / 5.0;
+                                bolt.lineTo(ax + (bx2 - ax) * t + (lr.nextDouble() - 0.5) * 7, ay + (by2 - ay) * t + (lr.nextDouble() - 0.5) * 7);
+                            }
+                            bolt.lineTo(bx2, by2);
+                            int a = (int) (255 * Math.sin(ph / 0.18 * Math.PI) * lit);
+                            g.setStroke(new BasicStroke(3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                            g.setColor(new Color(160, 140, 255, a / 2));
+                            g.draw(bolt);
+                            g.setStroke(new BasicStroke(1.1f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                            g.setColor(new Color(235, 230, 255, a));
+                            g.draw(bolt);
+                            g.setStroke(new BasicStroke(1f));
+                        }
+                        break;
+                    }
+                    case Mineral.FX_FLAME: {
+                        double flick = 0.6 + 0.25 * Math.sin(time * 9 + seed * 10) + 0.15 * Math.sin(time * 23 + seed * 3);
+                        glow(g, x, y, 19, new Color(255, 120, 30), 100 * flick * lit);
+                        for (int k = 0; k < 3; k++) {
+                            double ph = (time * 0.8 + k / 3.0 + seed) % 1.0;
+                            double px = x + 8 + k * 8 + Math.sin(ph * 9 + k) * 2, py = y + 24 - ph * 28;
+                            int a = (int) ((1 - ph) * 230 * lit);
+                            g.setColor(new Color(255, 200 - (int) (ph * 120), 60, a));
+                            g.fill(new Rectangle2D.Double(px, py, 1.8, 1.8));
+                        }
+                        break;
+                    }
+                    case Mineral.FX_SWIRL: {
+                        glow(g, x, y, 22, new Color(150, 80, 255), (60 + 60 * pulse(1.3, seed)) * lit);
+                        for (int k = 0; k < 3; k++) {
+                            double a = time * 1.6 + k * Math.PI * 2 / 3 + seed * 6;
+                            double px = x + 16 + Math.cos(a) * 13, py = y + 16 + Math.sin(a) * 6;
+                            g.setColor(new Color(220, 200, 255, (int) (220 * lit)));
+                            g.fill(new Ellipse2D.Double(px - 1.3, py - 1.3, 2.6, 2.6));
+                        }
+                        break;
+                    }
+                    default:
+                }
+                if (twinkles(mi)) twinkle(g, h, x, y, lit, mi.value >= 1000 ? 2 : 1);
+            }
+        g.setClip(oc);
+        Art.aa(g, false);
+    }
+
+    double pulse(double speed, double seed) {
+        return 0.5 + 0.5 * Math.sin(time * speed + seed * 6.28);
+    }
+
+    static void glow(Graphics2D g, int x, int y, float rad, Color c, double alpha) {
+        int a = (int) Math.max(0, Math.min(255, alpha));
+        if (a <= 2) return;
+        g.setPaint(new RadialGradientPaint(x + 16f, y + 16f, rad, new float[]{0f, 1f},
+            new Color[]{new Color(c.getRed(), c.getGreen(), c.getBlue(), a), new Color(c.getRed(), c.getGreen(), c.getBlue(), 0)}));
+        g.fill(new Rectangle2D.Double(x + 16 - rad, y + 16 - rad, rad * 2, rad * 2));
+    }
+
+    /** 一闪一闪的十字星光;贵的矿闪得更勤 */
+    void twinkle(Graphics2D g, int h, int x, int y, double lit, int rate) {
+        double period = rate == 2 ? 2.2 : 3.2;
+        double phase = (time * 0.6 * rate + (h % 1000) / 1000.0 * period) % period;
+        if (phase > 0.4) return;
+        double k = Math.sin(phase / 0.4 * Math.PI);
+        double sx = x + 6 + (h >> 4) % 20, sy = y + 6 + (h >> 9) % 20, len = 2 + 5 * k;
+        int a = (int) (240 * k * lit);
+        g.setColor(new Color(255, 255, 255, a / 3));
+        g.fill(new Ellipse2D.Double(sx - len * 0.8, sy - len * 0.8, len * 1.6, len * 1.6));
+        g.setColor(new Color(255, 255, 255, a));
+        g.fill(new Rectangle2D.Double(sx - len, sy - 0.6, len * 2, 1.2));
+        g.fill(new Rectangle2D.Double(sx - 0.6, sy - len, 1.2, len * 2));
+        g.fill(new Ellipse2D.Double(sx - 1.4, sy - 1.4, 2.8, 2.8));
+    }
+
+    /** 挖到矿:炸开一圈矿石颜色的亮晶晶粒子,越贵越多 */
+    void spawnPickup(double cx, double cy, Mineral mi) {
+        int n = 10 + (int) (Math.log10(mi.value) * 6);
+        Color base = brighten(mi.color);
+        for (int i = 0; i < n; i++) {
+            double a = fx.nextDouble() * Math.PI * 2, s = 40 + fx.nextDouble() * 110;
+            Color c = i % 3 == 0 ? Color.WHITE : base;
+            Particle q = part(cx, cy, Math.cos(a) * s, Math.sin(a) * s - 30, 0.5 + fx.nextDouble() * 0.4, 2 + fx.nextInt(2), c, false);
+            q.drag = 0.92;
+        }
     }
 
     void drawVehicle(Graphics2D g, double sx, double sy) {
@@ -1269,20 +1430,25 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 g.drawString("货舱是空的。下去挖点矿再来吧!", x + 32, ly);
                 ly += 34;
             } else {
-                for (int i = 0; i < Mineral.ALL.length; i++) {
-                    if (p.cargo[i] == 0) continue;
+                List<Integer> kinds = new ArrayList<>();
+                for (int i : Mineral.BY_VALUE) if (p.cargo[i] > 0) kinds.add(i);
+                int cols = kinds.size() > 12 ? 3 : kinds.size() > 6 ? 2 : 1;
+                int rows = (kinds.size() + cols - 1) / cols;
+                int colW = cols == 3 ? 202 : 305, lh = cols == 1 ? 24 : 22;
+                g.setFont(font(cols == 3 ? 13 : cols == 2 ? 14 : 15));
+                for (int k = 0; k < kinds.size(); k++) {
+                    int i = kinds.get(k);
                     Mineral mi = Mineral.ALL[i];
-                    g.setColor(mi.color);
-                    g.fillRect(x + 32, ly - 12, 14, 14);
+                    int cx = x + 30 + (k / rows) * colW, cy = ly + (k % rows) * lh;
+                    g.drawImage(tex.ore[Textures.band(World.SURFACE + mi.peakDepth)][i][0], cx - 2, cy - 15, 18, 18, null);
                     g.setColor(Color.WHITE);
-                    g.drawString(mi.name, x + 56, ly);
-                    g.drawString("× " + p.cargo[i], x + 180, ly);
-                    g.drawString("单价 $" + fmtMoney(mi.value), x + 260, ly);
+                    g.drawString(mi.name, cx + 22, cy);
+                    g.drawString("×" + p.cargo[i], cx + (cols == 1 ? 148 : cols == 2 ? 100 : 82), cy);
+                    if (cols == 1) g.drawString("单价 $" + fmtMoney(mi.value), cx + 228, cy);
                     g.setColor(new Color(255, 214, 70));
-                    g.drawString("$" + fmtMoney(mi.value * p.cargo[i]), x + 430, ly);
-                    ly += 24;
+                    g.drawString("$" + fmtMoney((long) mi.value * p.cargo[i]), cx + (cols == 1 ? 398 : cols == 2 ? 160 : 116), cy);
                 }
-                ly += 10;
+                ly += rows * lh + 10;
             }
         }
 
@@ -1431,27 +1597,23 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     }
 
     void drawMineralTable(Graphics2D g, int x, int y) {
-        g.setFont(fontB(15));
-        g.setColor(new Color(255, 200, 80));
-        g.drawString("矿石", x + 40, y);
-        g.drawString("单价", x + 200, y);
-        g.drawString("大约从多深开始出现", x + 340, y);
-        y += 34;
-        for (int i = 0; i < Mineral.ALL.length; i++) {
+        int n = Mineral.BY_VALUE.length, rows = (n + 2) / 3;
+        y -= 22;
+        for (int k = 0; k < n; k++) {
+            int i = Mineral.BY_VALUE[k];
             Mineral m = Mineral.ALL[i];
-            int b = Textures.band(World.SURFACE + Math.max(1, m.minDepth));
-            g.drawImage(tex.ore[b][i][0], x, y - 22, 28, 28, null);
-            g.setFont(fontB(16));
+            int cx = x + (k / rows) * 226, cy = y + (k % rows) * 40;
+            int b = Textures.band(World.SURFACE + Math.max(1, m.peakDepth));
+            g.drawImage(tex.ore[b][i][0], cx, cy, 34, 34, null);
+            g.setFont(fontB(15));
             g.setColor(Color.WHITE);
-            g.drawString(m.name, x + 40, y);
+            g.drawString(m.name, cx + 42, cy + 15);
             g.setColor(new Color(255, 214, 70));
-            g.drawString("$" + fmtMoney(m.value), x + 200, y);
-            g.setFont(font(15));
-            g.setColor(new Color(210, 210, 210));
-            String d = i == Mineral.HEART ? "最底部附近,全图只有几颗,周围全是熔岩"
-                : Math.round(m.minDepth * METERS_PER_ROW) + " 米以下,约 " + Math.round(m.peakDepth * METERS_PER_ROW) + " 米最多";
-            g.drawString(d, x + 340, y);
-            y += 38;
+            g.drawString("$" + fmtMoney(m.value), cx + 122, cy + 15);
+            g.setFont(font(12));
+            g.setColor(new Color(190, 190, 190));
+            String d = i == Mineral.HEART ? "最底部,全图仅 " + World.HEARTS + " 颗" : "常见于约 " + Math.round(m.peakDepth * METERS_PER_ROW) + " 米";
+            g.drawString(d, cx + 42, cy + 32);
         }
     }
 
@@ -1638,7 +1800,9 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     }
 
     static Color brighten(Color c) {
-        if (c.getRed() + c.getGreen() + c.getBlue() < 150) return new Color(200, 200, 210);
+        int sum = c.getRed() + c.getGreen() + c.getBlue();
+        if (sum < 150) return new Color(200, 200, 210);
+        if (sum < 380) return new Color(Math.min(255, c.getRed() + 80), Math.min(255, c.getGreen() + 80), Math.min(255, c.getBlue() + 80));
         return c;
     }
 
