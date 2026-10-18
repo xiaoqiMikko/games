@@ -41,7 +41,7 @@ java -cp "$S/testcls" lavadigger.EconSim [种子...]      # 可加 -DpriceScale=
 - **`World`**:`byte[]` 网格(48×420,每格 32px,第 8 行 `SURFACE` 是地表)。矿物编码为 `ORE + 矿物下标`。`generate(seed)` 按深度概率生成,再做成团扩散、挖空洞、单独摆放 6 颗熔岩之心,最后清理出生点。
 - **数值表集中在两处**:`Upgrades`(7 种部件 × 7 档的数值和价格、道具;第 7 种是探测器)和 `Mineral`(价值和深度分布);油耗、油价、摔落阈值、救援费等常量在 `GamePanel` 顶部。调平衡只改这三处。
   - 用户定的节奏:难度逐档上升但满级一定够油;通关 3~5 小时、全部升满约 5 小时。价格是用 `EconSim` 校准出来的,改了价格、矿价、油耗或地热就重跑它(8 个种子看通关/全满小时数)。`V4Test` 里有"第 6 档在底层挖满一舱用油 ≤60%、满级 ≤45%、第 5 档拿心回来剩 ≥25%"的断言。
-  - 地热:`GamePanel.heat(深度格)`,150 米(50 格)以下所有地下油耗乘它,散热器减轻;`returnFuel()` 按深度逐格累加地热。300 米以下有地震落石(`updateQuake`),碎石是实体,**绝不写进地图**,同一次地震最多扣一次血。
+  - 地热:`GamePanel.heat(深度格)`,150 米(50 格)以下所有地下油耗乘它,散热器减轻;`returnFuel()` 按深度逐格累加地热。HUD 显示的是"车温" `carTempC` = `tempC(heat())`,和油耗倍数同一个公式(用户要求深度、散热器、油耗三者对得上);改装厂散热器那行预览最深处车温。燃油报警:回程 ×1.3 + 挖 3 块矿的油提醒,回程 ×1.1 + 挖 1 块危险(`digFuelHere`)。300 米以下有地震落石(`updateQuake`),碎石是实体,**绝不写进地图**,同一次地震最多扣一次血。
 - **加矿种的规矩**:`Mineral.ALL` 的下标就是存档里的格子编码(`ORE + 下标`),**只能往数组末尾追加**,不能插队、删除或改顺序。追加一批新矿时:记下这批的起始下标(如 `FIRST_V3`),把 `SaveManager` 写出的 `version` 加 1,并在 `load` 里对低版本存档调用 `World.injectNewMinerals(起始下标, 比例)`,往没挖过的泥土里补新矿。贴图样式看 `style`(`Textures.makeOre`),动态特效看 `fx`(`GamePanel.drawOreEffects`,画在黑暗遮罩之后)。挖掘硬度由价格决定(`Mineral.hardness`)。
 - **熔岩之心和宝藏**(`Mineral.isProtected`):全图数量固定(心 6 颗,宝藏见 `TREASURE_COUNT`),由 `World.placeProtected` 单独摆放(`weight=0`,`pick` 不会随机产出)。炸药炸不掉;爆炸丢失时放回原深度带,所以通关目标恒为 6 颗。
 - 新手指引 `tip(id)` 和深度里程碑 `checkMilestones()` 各用 `Player` 里的一个位掩码记"已发生过"。小地图只画玩家挖开的格子(`World.dug`,读档时按种子重新生成原图对比得出)。

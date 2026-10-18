@@ -47,7 +47,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         "橙红色的是熔岩,钻进去会被烧伤。绕开它,或者升级散热器",
         "刚才是瓦斯!它看起来像泥土,细看有淡绿色斑点。探测器能提前标出来",
         "卖了钱去改装厂升级,油箱和钻头最要紧",
-        "进入地热区:越往下越热,干什么都更费油。深度旁边的温度越高越费油",
+        "进入地热区:越往下车温越高,干什么都更费油。深度旁边显示车温,升级散热器能降下来",
         "地震了!头顶掉灰就是碎石要落下来,赶紧挪开",
     };
     static final double QUAKE_ROWS = 100;    // 300 米以下会地震
@@ -294,8 +294,13 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
 
     /** 地热:150 米以下所有地下油耗乘这个系数,越深越大;散热器能减轻 */
     double heat(double rows) {
+        return heatWith(rows, p.radiator());
+    }
+
+    /** 指定散热器减伤比例时的地热系数(改装厂预览升级效果用) */
+    static double heatWith(double rows, double radiator) {
         if (rows <= HEAT_START) return 1;
-        return 1 + HEAT_GAIN * (rows - HEAT_START) / (World.ROWS - 3 - World.SURFACE - HEAT_START) * (1 - 0.6 * p.radiator());
+        return 1 + HEAT_GAIN * (rows - HEAT_START) / (World.ROWS - 3 - World.SURFACE - HEAT_START) * (1 - 0.6 * radiator);
     }
 
     /** 地温(℃),只用来显示 */
@@ -303,10 +308,12 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         return (int) Math.round(20 + (heat - 1) * 60);
     }
 
-    /** 这一深度的地层温度(℃):只看深度,和车的散热器无关 */
-    int groundTempC(double rows) {
-        if (rows <= HEAT_START) return 20;
-        return tempC(1 + HEAT_GAIN * (rows - HEAT_START) / (World.ROWS - 3 - World.SURFACE - HEAT_START));
+    /**
+     * 车温(℃):越深越热,散热器把它降下来。车温和地热油耗倍数是同一个东西的两种说法,
+     * 所以 HUD 上的温度越高就越费油。
+     */
+    int carTempC(double rows) {
+        return tempC(heat(rows));
     }
 
     /** 在当前深度、用当前钻头挖一块普通矿石大约要的油(给燃油报警留余量用) */
@@ -825,11 +832,13 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                     if (lv < Upgrades.TIERS - 1) {
                         list.add(new MenuItem(String.format("%s  Lv%d   %s → %s   $%s", pad(Upgrades.NAMES[k]), lv + 1,
                             Upgrades.fmt(k, lv), Upgrades.fmt(k, lv + 1), fmtMoney(Upgrades.PRICES[k][lv + 1])),
-                            Upgrades.DESC[k] + "  下一级:" + Upgrades.TIER_NAMES[lv + 1] + Upgrades.NAMES[k],
+                            Upgrades.DESC[k] + (k == Upgrades.RADIATOR ? "  最深处车温 " + deepTemp(lv) + "℃ → " + deepTemp(lv + 1) + "℃"
+                                : "  下一级:" + Upgrades.TIER_NAMES[lv + 1] + Upgrades.NAMES[k]),
                             p.money >= Upgrades.PRICES[k][lv + 1], () -> buyUpgrade(kind)));
                     } else {
                         list.add(new MenuItem(String.format("%s  Lv7   %s   已满级", pad(Upgrades.NAMES[k]), Upgrades.fmt(k, lv)),
-                            Upgrades.DESC[k], false, () -> msg("已经是最高级了", Color.LIGHT_GRAY)));
+                            Upgrades.DESC[k] + (k == Upgrades.RADIATOR ? "  最深处车温 " + deepTemp(lv) + "℃" : ""),
+                            false, () -> msg("已经是最高级了", Color.LIGHT_GRAY)));
                     }
                 }
                 break;
@@ -846,6 +855,11 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         }
         list.add(new MenuItem("离开", "回到地面(Esc 也可以)", true, this::closeShop));
         return list;
+    }
+
+    /** 散热器在第 lv 档时,最底层的车温 */
+    int deepTemp(int lv) {
+        return tempC(heatWith(World.ROWS - 3 - World.SURFACE, Upgrades.VALUES[Upgrades.RADIATOR][lv]));
     }
 
     static String pad(String s) {
@@ -1596,7 +1610,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         g.setFont(font(12));
         g.setColor(new Color(200, 200, 200));
         g.drawString("深度", 160, 19);
-        int tc = groundTempC(p.depthRows());
+        int tc = carTempC(p.depthRows());
         if (tc > 20) {
             g.setColor(tc > 110 ? new Color(255, 80, 60) : new Color(255, 165, 60));
             g.drawString(tc + "℃", 196, 19);
@@ -1946,7 +1960,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                     "#摔落",
                     "掉落超过 4 格会摔伤(10 格扣 1.5、20 格扣 4);快落地时按 ↑ 刹车能减轻",
                     "#地热(150 米以下)",
-                    "越深越热、越费油(最深处约 3.5 倍);深度旁显示温度,「散热器」能减轻",
+                    "越深车温越高、越费油(最深处约 3.5 倍);深度旁显示车温,「散热器」能降温",
                     "#地震落石(300 米以下)",
                     "不时会地震:头顶掉灰就是碎石要落下来了,赶紧挪开",
                 };

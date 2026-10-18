@@ -583,13 +583,25 @@ public final class V4Test {
         for (int[] k : cases) all &= alarmThenTwoMore(gp, k[0], k[1]);
         check(all, "报警响起后再挖 2 块矿、开回竖井,仍能飞回地面");
 
-        // 地温只看深度,不随散热器变化
+        // 车温:深度和散热器一起决定,和地热油耗倍数一一对应
         Player p = gp.p;
         setAll(p, 0);
-        int t0 = gp.groundTempC(300);
+        int t1 = gp.carTempC(300);
+        p.level[Upgrades.RADIATOR] = 1;
+        int t2 = gp.carTempC(300);
         p.level[Upgrades.RADIATOR] = 6;
-        check(gp.groundTempC(300) == t0 && t0 > 100, "地温不随散热器变化,300 格深 " + t0 + "℃");
-        check(gp.heat(300) < 1 + GamePanel.HEAT_GAIN * 250 / 359.0, "散热器仍然减轻地热油耗");
+        int t7 = gp.carTempC(300);
+        System.out.printf("  300 格深车温:散热器1级 %d℃, 2级 %d℃, 满级 %d℃%n", t1, t2, t7);
+        check(t1 > t2 && t2 > t7 && t7 > 20, "车温随散热器升级降低");
+        check(gp.carTempC(300) == gp.tempC(gp.heat(300)), "车温和油耗倍数用同一个公式");
+        check(gp.carTempC(30) == 20, "浅层车温 20℃");
+        p.level[Upgrades.RADIATOR] = 0;
+        gp.openShop(Shop.UPGRADE);
+        String rad = gp.shopItems().get(Upgrades.RADIATOR).detail;
+        check(rad.contains("车温") && rad.contains(gp.carTempC(World.ROWS - 3 - World.SURFACE) + "℃"), "改装厂散热器写出最深处车温变化:" + rad);
+        gp.menuSel = Upgrades.RADIATOR;
+        shot(gp, "v4-12-radiator");
+        gp.closeShop();
         gp.respawn();
     }
 
