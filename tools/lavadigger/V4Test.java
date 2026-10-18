@@ -27,6 +27,7 @@ public final class V4Test {
         task6(gp);
         task7(gp);
         reviewFixes(gp);
+        minimapEdge(gp);
 
         System.out.println(SelfTest.fails == 0 ? "V4 全部通过" : ("V4 失败 " + SelfTest.fails + " 项"));
         System.exit(SelfTest.fails == 0 ? 0 : 1);
@@ -512,5 +513,20 @@ public final class V4Test {
         boolean ok = true;
         for (int i = 0; i < 3; i++) ok &= w.placeProtected(Mineral.HEART, new java.util.Random(i));
         check(ok && countTile(w, Mineral.HEART) == before + 3, "深度带被挖空时熔岩之心仍能放回地底");
+    }
+
+    /** 车在地图最右边一列时,不能被右侧小地图挡住 */
+    static void minimapEdge(GamePanel gp) throws Exception {
+        int[] cr = room(gp, 60);
+        int c = World.COLS - 1;
+        gp.world.set(c, cr[1], World.AIR);
+        gp.p.x = c * T + (T - Player.W) / 2.0;
+        gp.snapCamera();
+        double right = gp.p.x + Player.W - gp.camX;
+        check(right <= GamePanel.MINI_X - 6, "最右一列的车在小地图左边,没被挡住(车右边缘 " + (int) right + ")");
+        double tileRight = World.COLS * T - gp.camX;
+        check(tileRight <= GamePanel.MINI_X - 3, "地图最右一列完整露在小地图左边");
+        shot(gp, "v4-11-right-edge");
+        gp.respawn();
     }
 }

@@ -1120,7 +1120,8 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     }
 
     void clampCamera() {
-        camX = Math.max(0, Math.min(World.COLS * T - VW, camX));
+        // 右边多留出小地图的宽度,最右一列才不会被小地图挡住
+        camX = Math.max(0, Math.min(World.COLS * T - VW + MINI_MARGIN, camX));
         camY = Math.max(0, Math.min(World.ROWS * T - VH, camY));
     }
 
@@ -1251,6 +1252,11 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 g.drawImage(tex.tile(t, c, r, time), x, y, null);
             }
         }
+        // 地图右边界外面(镜头为小地图多走出的那一窄条)画成基岩
+        int edge = World.COLS * T - ox;
+        if (edge < VW)
+            for (int r = Math.max(r0, World.SURFACE); r <= r1; r++)
+                for (int x = edge; x < VW; x += T) g.drawImage(tex.bedrock, x, r * T - oy, null);
         // 和空洞相邻的边加暗边,更有立体感
         g.setColor(new Color(0, 0, 0, 95));
         for (int r = Math.max(r0, World.SURFACE); r <= r1; r++) {
@@ -1622,6 +1628,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     BufferedImage miniImg;
     int miniVersion = -1;
     static final int MINI_X = VW - 30, MINI_Y = 58, MINI_W = 24, MINI_H = VH - 58 - 30;
+    static final int MINI_MARGIN = VW - MINI_X + 6; // 镜头在地图右边多走出的距离
 
     /** 右侧小地图:整条深度的标尺,画出挖过的地方、车的位置、里程碑和地热线 */
     void drawMinimap(Graphics2D g) {
@@ -1649,9 +1656,9 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
             int my = y + (int) (MILESTONE_M[i] / METERS_PER_ROW * hs);
             boolean got = (p.milestones & (1 << i)) != 0;
             String lab = String.valueOf(MILESTONE_M[i]);
-            g.setColor(got ? new Color(120, 255, 170, 200) : new Color(200, 200, 200, 140));
-            g.drawLine(x - 4, my, x, my);
-            g.drawString(lab, x - 5 - g.getFontMetrics().stringWidth(lab), my + 3);
+            g.setColor(got ? new Color(120, 255, 170, 220) : new Color(210, 210, 210, 170));
+            g.drawLine(x, my, x + w, my);
+            g.drawString(lab, x + w - 1 - g.getFontMetrics().stringWidth(lab), my - 2);
         }
         g.setColor(new Color(255, 150, 60, 200));
         g.drawLine(x, hy, x + w, hy);
