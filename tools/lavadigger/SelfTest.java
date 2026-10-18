@@ -72,6 +72,9 @@ public final class SelfTest {
             if (gp.nearShop() != Shop.SELL) lost++;
         }
         check(lost == 0, "停在店门口 600 帧进店判定不闪, 丢失 " + lost + " 帧");
+        double fSurface = gp.p.fuel;
+        run(gp, 20);
+        check(gp.p.fuel == fSurface, "停在地面 20 秒不耗油");
         int cargo = gp.p.cargoCount(), money = gp.p.money, val = gp.p.cargoValue();
         gp.openShop(Shop.SELL);
         shot(gp, "04-sell-shop");
@@ -102,14 +105,17 @@ public final class SelfTest {
         for (int c = 18; c <= 23; c++) for (int r = World.SURFACE + 148; r <= World.SURFACE + 150; r++) gp.world.set(c, r, World.AIR);
         gp.snapCamera();
         gp.p.fuel = gp.p.maxFuel() * 0.15;
-        run(gp, 0.6);
+        double fDeep = gp.p.fuel;
+        run(gp, 10);
+        System.out.printf("地下停 10 秒: 油 %.3f -> %.3f%n", fDeep, gp.p.fuel);
+        check(fDeep - gp.p.fuel > 0.1 && fDeep - gp.p.fuel < 0.25, "停在地下 10 秒少量耗油");
         shot(gp, "08-deep-lowfuel");
 
         // 油耗尽 -> 爆炸 -> 结算
         gp.p.money = 1000;
         gp.p.cargo[3] = 2;
         gp.p.fuel = 0.01;
-        run(gp, 0.5);
+        run(gp, 1.0);
         check(gp.state == GamePanel.State.EXPLODING, "油耗尽后爆炸, state=" + gp.state);
         run(gp, 0.15);
         shot(gp, "09-explosion");

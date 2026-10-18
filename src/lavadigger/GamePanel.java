@@ -17,7 +17,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
 
     // 物理与经济参数
     static final double GRAVITY = 700;
-    static final double FUEL_IDLE = 0.035, FUEL_DRIVE = 0.12, FUEL_THRUST = 0.30, FUEL_DRILL = 0.28; // 升/秒
+    static final double FUEL_IDLE = 0.017, FUEL_DRIVE = 0.12, FUEL_THRUST = 0.30, FUEL_DRILL = 0.28; // 升/秒
     static final double FUEL_PRICE = 2.0, REPAIR_PRICE = 12.0;
     static final double DIG_BASE = 0.75;     // 出厂钻头挖一格泥土的秒数
     static final double DEATH_FEE = 0.25;    // 爆炸后的救援费:现金的 25%
@@ -177,7 +177,8 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
             }
         }
 
-        p.fuel -= FUEL_IDLE * dt;
+        // 怠速耗油只在地下发生:地面上停着不耗油
+        if (p.depthRows() > 0.5) p.fuel -= FUEL_IDLE * dt;
         int depth = (int) Math.floor(p.depthRows());
         if (depth > p.maxDepth) p.maxDepth = depth;
         if (p.hull < p.maxHull() * 0.3 && fx.nextDouble() < dt * 6) spawnSmoke(p.x + 6, p.y, false);
@@ -1316,7 +1317,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                     "#诀窍",
                     "越深的矿越值钱,但往回飞的路也越长 —— 算好来回的油",
                     "油量低于 20% 会报警、屏幕闪红,低于 10% 会急促报警",
-                    "往上飞比往下钻省时间,但飞的时候也一直在烧油",
+                    "停在地面不耗油;停在地下也会慢慢耗油,别在下面发呆",
                     "地底最深处藏着 6 颗「熔岩之心」,一颗值 $30,000",
                 };
             case 3:
