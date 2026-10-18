@@ -59,6 +59,7 @@ final class Player {
     int cargoMax() { return (int) val(Upgrades.CARGO); }
     double maxHull() { return val(Upgrades.HULL); }
     double radiator() { return val(Upgrades.RADIATOR); }
+    int probeRadius() { return (int) val(Upgrades.PROBE); }
 
     int cargoCount() {
         int n = 0;

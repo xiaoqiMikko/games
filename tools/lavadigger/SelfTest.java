@@ -88,7 +88,7 @@ public final class SelfTest {
         gp.p.money = 3000;
         gp.openShop(Shop.UPGRADE);
         gp.buyUpgrade(Upgrades.FUEL);
-        check(gp.p.level[Upgrades.FUEL] == 1 && gp.p.money == 2500, "升级油箱扣钱");
+        check(gp.p.level[Upgrades.FUEL] == 1 && gp.p.money == 3000 - Upgrades.PRICES[Upgrades.FUEL][1], "升级油箱扣钱");
         gp.menuSel = 1;
         shot(gp, "05-upgrade-shop");
         gp.closeShop();

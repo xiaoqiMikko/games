@@ -28,6 +28,8 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     static final double RELIEF_FUEL = 0.4;   // 救济油:补到油箱的 40%
     static final double LOW_FUEL = 0.2;
     static final double METERS_PER_ROW = 3;
+    static final double HEAT_START = 50;     // 150 米以下开始有地热
+    static final double HEAT_GAIN = 2.5;     // 到最底层额外增加的油耗倍数(出厂散热器)
 
     enum State { TITLE, PLAY, SHOP, PAUSE, EXPLODING, REPORT, HELP, ENDING }
 
@@ -139,6 +141,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         boolean up = key(KeyEvent.VK_UP, KeyEvent.VK_W);
         boolean down = key(KeyEvent.VK_DOWN, KeyEvent.VK_S);
         if (rockMsgCooldown > 0) rockMsgCooldown -= dt;
+        double heatNow = heat(p.depthRows());
 
         if (p.digging) {
             p.thrusting = false;
@@ -146,7 +149,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
             double k = Math.min(1, p.digProgress);
             p.x = p.digSX + (p.digTX - p.digSX) * k;
             p.y = p.digSY + (p.digTY - p.digSY) * k;
-            p.fuel -= FUEL_DRILL * dt;
+            p.fuel -= FUEL_DRILL * heatNow * dt;
             if (fx.nextDouble() < dt * 40) spawnDigChip();
             if (p.digProgress >= 1) finishDig();
         } else {
@@ -156,7 +159,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 int dir = left ? -1 : 1;
                 p.facing = dir;
                 p.vx += dir * acc * dt;
-                if (p.depthRows() > 0.5) p.fuel -= FUEL_DRIVE * dt; // 地面上开车不耗油,飞行照常耗油
+                if (p.depthRows() > 0.5) p.fuel -= FUEL_DRIVE * heatNow * dt; // 地面上开车不耗油,飞行照常耗油
             } else {
                 double fr = (p.onGround ? 900 : 260) * dt;
                 p.vx = Math.abs(p.vx) <= fr ? 0 : p.vx - Math.signum(p.vx) * fr;
@@ -166,7 +169,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
             if (up) {
                 p.vy -= (GRAVITY + 430 * eng) * dt;
                 if (p.vy > 0) p.vy = Math.max(0, p.vy - BRAKE * dt); // 正在往下掉:用力刹车
-                p.fuel -= FUEL_THRUST * dt;
+                p.fuel -= FUEL_THRUST * heatNow * dt;
                 if (fx.nextDouble() < dt * 30) spawnSmoke(p.x + Player.W / 2.0, p.y + Player.H, true);
             }
             p.vy += GRAVITY * dt;
@@ -186,7 +189,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         }
 
         // 怠速耗油只在地下发生:地面上停着不耗油
-        if (p.depthRows() > 0.5) p.fuel -= FUEL_IDLE * dt;
+        if (p.depthRows() > 0.5) p.fuel -= FUEL_IDLE * heatNow * dt;
         int depth = (int) Math.floor(p.depthRows());
         if (depth > p.maxDepth) p.maxDepth = depth;
         if (p.hull < p.maxHull() * 0.3 && fx.nextDouble() < dt * 6) spawnSmoke(p.x + 6, p.y, false);
@@ -238,11 +241,26 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         if (inputDir == 0) p.vx = 0;
     }
 
-    /** 估算从当前深度直线飞回地面需要的油(升) */
+    /** 地热:150 米以下所有地下油耗乘这个系数,越深越大;散热器能减轻 */
+    double heat(double rows) {
+        if (rows <= HEAT_START) return 1;
+        return 1 + HEAT_GAIN * (rows - HEAT_START) / (World.ROWS - 3 - World.SURFACE - HEAT_START) * (1 - 0.6 * p.radiator());
+    }
+
+    /** 地温(℃),只用来显示 */
+    int tempC(double heat) {
+        return (int) Math.round(20 + (heat - 1) * 60);
+    }
+
+    /** 估算从当前深度直线飞回地面需要的油(升),逐格累加地热 */
     double returnFuel() {
         double rows = Math.max(0, p.depthRows());
-        double upSpeed = 130 * p.engineMul();
-        return rows * T / upSpeed * (FUEL_THRUST + FUEL_IDLE);
+        double perRow = T / (130 * p.engineMul()) * (FUEL_THRUST + FUEL_IDLE);
+        double sum = 0;
+        int whole = (int) rows;
+        for (int d = 0; d < whole; d++) sum += perRow * heat(d + 0.5);
+        sum += perRow * (rows - whole) * heat(rows);
+        return sum;
     }
 
     /** 0 = 正常, 1 = 燃油不足(该往回走了), 2 = 危险(只剩勉强够回去的油) */
@@ -499,14 +517,16 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         switch (i) {
             case 0:
                 if (p.fuel >= p.maxFuel() - 0.01) return;
-                p.fuel = Math.min(p.maxFuel(), p.fuel + 20);
-                addText(cx, p.y - 6, "+20 升燃油", new Color(120, 255, 120));
+                double add = p.maxFuel() * 0.5;
+                p.fuel = Math.min(p.maxFuel(), p.fuel + add);
+                addText(cx, p.y - 6, String.format("+%.0f 升燃油", add), new Color(120, 255, 120));
                 sfx.buy();
                 break;
             case 1:
                 if (p.hull >= p.maxHull() - 0.01) return;
-                p.hull = Math.min(p.maxHull(), p.hull + 30);
-                addText(cx, p.y - 6, "车身 +30", new Color(120, 220, 255));
+                double fix = p.maxHull() * 0.5;
+                p.hull = Math.min(p.maxHull(), p.hull + fix);
+                addText(cx, p.y - 6, String.format("车身 +%.0f", fix), new Color(120, 220, 255));
                 sfx.buy();
                 break;
             case 2: {
@@ -1291,6 +1311,11 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         g.setFont(font(12));
         g.setColor(new Color(200, 200, 200));
         g.drawString("深度", 160, 19);
+        double hz = heat(p.depthRows());
+        if (hz > 1.001) {
+            g.setColor(hz > 2.5 ? new Color(255, 80, 60) : new Color(255, 165, 60));
+            g.drawString(tempC(hz) + "℃", 196, 19);
+        }
         g.setFont(fontB(17));
         g.setColor(Color.WHITE);
         g.drawString(depthMeters() + " 米", 160, 39);
