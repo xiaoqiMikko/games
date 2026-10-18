@@ -5,7 +5,7 @@ import java.util.Base64;
 import java.util.Properties;
 
 /**
- * 存档:放在 jar 所在文件夹的 save/lava-digger-save.properties,跟着游戏文件夹走。
+ * 存档:放在 jar 所在文件夹的 save/lava.properties,跟着游戏文件夹走。
  * 游戏文件夹不可写时退回到 用户目录/.lava-digger/。
  * 老版本的存档(用户目录/.lava-digger/save.properties、游戏文件夹/存档/熔岩矿车存档.properties)
  * 会在启动时自动搬过来。
@@ -15,7 +15,8 @@ final class SaveManager {
     static File dirOverride;          // 测试用
 
     static final String DIR_NAME = "save";
-    static final String FILE_NAME = "lava-digger-save.properties";
+    static final String FILE_NAME = "lava.properties";
+    static final String OLD_EN_FILE = "lava-digger-save.properties"; // 上一版的文件名
     // 上一版用过的中文存档位置(游戏文件夹下)
     static final String OLD_CN_DIR = "存档", OLD_CN_FILE = "熔岩矿车存档.properties";
 
@@ -53,7 +54,10 @@ final class SaveManager {
     static void migrateLegacy() {
         if (!enabled) return;
         File base = dirOverride != null ? dirOverride.getParentFile() : gameDir();
-        if (base != null) migrate(new File(new File(base, OLD_CN_DIR), OLD_CN_FILE));
+        if (base != null) {
+            migrate(new File(new File(base, DIR_NAME), OLD_EN_FILE));
+            migrate(new File(new File(base, OLD_CN_DIR), OLD_CN_FILE));
+        }
         migrate(legacyFile());
     }
 
