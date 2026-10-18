@@ -303,6 +303,18 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         return (int) Math.round(20 + (heat - 1) * 60);
     }
 
+    /** 这一深度的地层温度(℃):只看深度,和车的散热器无关 */
+    int groundTempC(double rows) {
+        if (rows <= HEAT_START) return 20;
+        return tempC(1 + HEAT_GAIN * (rows - HEAT_START) / (World.ROWS - 3 - World.SURFACE - HEAT_START));
+    }
+
+    /** 在当前深度、用当前钻头挖一块普通矿石大约要的油(给燃油报警留余量用) */
+    double digFuelHere() {
+        double d = Math.max(0, p.depthRows());
+        return DIG_BASE * 1.6 * (1 + d / 250.0) / p.drillMul() * (FUEL_DRILL + FUEL_IDLE) * heat(d);
+    }
+
     /** 估算从当前深度直线飞回地面需要的油(升),逐格累加地热 */
     double returnFuel() {
         double rows = Math.max(0, p.depthRows());
@@ -441,10 +453,11 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         // 已经安全停在地面上:地面开车不耗油,不用再报警;一旦离地飞起来或钻下去就恢复报警
         if (p.onGround && Math.abs(p.depthRows()) < 0.5 && !p.digging) return 0;
         if (p.depthRows() > 0.5) {
-            // 地下:按"直线飞回地面要多少油"判断。回程要 5 升,剩 6 升左右开始提醒
-            double ret = returnFuel();
-            if (p.fuel < ret * 1.05 + 0.15) return 2;
-            if (p.fuel < Math.max(ret * 1.2, ret + 0.3)) return 1;
+            // 地下:按"直线飞回地面要多少油"判断,再留出挖几块矿、开回竖井的余量。
+            // 提醒:回程的 1.3 倍 + 大约挖 3 块矿的油;危险:回程的 1.1 倍 + 挖 1 块矿的油
+            double ret = returnFuel(), dig = digFuelHere();
+            if (p.fuel < ret * 1.1 + dig + 0.2) return 2;
+            if (p.fuel < ret * 1.3 + dig * 3 + 0.4) return 1;
             return 0;
         }
         // 在地面上方飞:按油箱比例
@@ -1157,6 +1170,8 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         drawOreEffects(g, ox, oy);
         drawProbe(g, ox, oy);
         drawRocks(g, ox, oy);
+        // 小地图画在飘字之前,挖到矿的"+$"提示才不会被它挡住
+        if (state != State.TITLE && !(state == State.HELP && helpReturn == State.TITLE)) drawMinimap(g);
         drawTexts(g, ox, oy);
 
         switch (state) {
@@ -1581,10 +1596,10 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         g.setFont(font(12));
         g.setColor(new Color(200, 200, 200));
         g.drawString("深度", 160, 19);
-        double hz = heat(p.depthRows());
-        if (hz > 1.001) {
-            g.setColor(hz > 2.5 ? new Color(255, 80, 60) : new Color(255, 165, 60));
-            g.drawString(tempC(hz) + "℃", 196, 19);
+        int tc = groundTempC(p.depthRows());
+        if (tc > 20) {
+            g.setColor(tc > 110 ? new Color(255, 80, 60) : new Color(255, 165, 60));
+            g.drawString(tc + "℃", 196, 19);
         }
         g.setFont(fontB(17));
         g.setColor(Color.WHITE);
@@ -1622,7 +1637,6 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         g.setColor(new Color(220, 220, 220));
         g.drawString("F 油桶×" + p.items[0] + "   R 修理×" + p.items[1], 790, 20);
         g.drawString("X 炸药×" + p.items[2] + "   T 传送×" + p.items[3], 790, 39);
-        drawMinimap(g);
     }
 
     BufferedImage miniImg;

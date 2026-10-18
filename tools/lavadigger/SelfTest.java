@@ -303,20 +303,20 @@ public final class SelfTest {
         gp.p.fuel = 0.5;
         check(!gp.canGetRelief(), "有钱时不给救济油");
         gp.closeShop();
-        // 地下报警:按回程油量 1.2 倍
+        // 地下报警:回程的 1.3 倍 + 挖 3 块矿的油提醒;回程的 1.1 倍 + 挖 1 块矿的油危险
         {
             gp.p.x = 26 * World.T + 3;
             gp.p.y = (World.SURFACE + 60) * World.T + World.T - Player.H;
             gp.p.onGround = true;
-            double ret = gp.returnFuel();
-            gp.p.fuel = ret * 1.3;
+            double ret = gp.returnFuel(), dig = gp.digFuelHere();
+            gp.p.fuel = ret * 1.3 + dig * 3 + 0.5;
             int a1 = gp.fuelAlarm();
-            gp.p.fuel = ret * 1.15;
+            gp.p.fuel = ret * 1.2 + dig * 2 + 0.3;
             int a2 = gp.fuelAlarm();
-            gp.p.fuel = ret * 1.0;
+            gp.p.fuel = ret * 1.05;
             int a3 = gp.fuelAlarm();
-            System.out.printf("回程 %.2f 升: 剩1.3倍→%d, 1.15倍→%d, 1.0倍→%d%n", ret, a1, a2, a3);
-            check(a1 == 0 && a2 == 1 && a3 == 2, "报警阈值按回程 1.2 倍");
+            System.out.printf("回程 %.2f 升, 挖一块 %.2f 升: 余量足→%d, 余量紧→%d, 只够回程→%d%n", ret, dig, a1, a2, a3);
+            check(a1 == 0 && a2 == 1 && a3 == 2, "报警阈值:回程 1.3 倍 + 挖 3 块矿的余量");
             gp.p.fuel = gp.p.maxFuel();
         }
         // 熔岩之心:全图正好 6 颗

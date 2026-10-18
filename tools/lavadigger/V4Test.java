@@ -28,6 +28,8 @@ public final class V4Test {
         task7(gp);
         reviewFixes(gp);
         minimapEdge(gp);
+        alarmMargin(gp);
+        textOverMinimap(gp);
 
         System.out.println(SelfTest.fails == 0 ? "V4 全部通过" : ("V4 失败 " + SelfTest.fails + " 项"));
         System.exit(SelfTest.fails == 0 ? 0 : 1);
@@ -527,6 +529,89 @@ public final class V4Test {
         double tileRight = World.COLS * T - gp.camX;
         check(tileRight <= GamePanel.MINI_X - 3, "地图最右一列完整露在小地图左边");
         shot(gp, "v4-11-right-edge");
+        gp.respawn();
+    }
+
+    /**
+     * 燃油报警的余量:报警一响,玩家再挖 2 块矿、开回竖井、再往上飞,也必须能回到地面。
+     * 竖井在 c,矿在 c+1、c+2(同一行),车从竖井往右挖。
+     */
+    static boolean alarmThenTwoMore(GamePanel gp, int tier, int depth) {
+        Player p = gp.p;
+        gp.respawn();
+        setAll(p, tier);
+        int c = 10, r = World.SURFACE + depth;
+        for (int rr = World.SURFACE - 3; rr <= r; rr++) gp.world.set(c, rr, World.AIR);
+        for (int cc = c + 1; cc <= c + 4; cc++) { gp.world.set(cc, r, (byte) (World.ORE + 6)); gp.world.set(cc, r - 1, World.DIRT); gp.world.set(cc, r + 1, World.ROCK); }
+        gp.world.set(c, r + 1, World.ROCK);
+        gp.world.set(c - 1, r, World.BEDROCK); // 开回竖井时挡住,别往左钻进土里
+        p.x = c * T + 3;
+        p.y = r * T + T - Player.H;
+        p.fallStartY = p.y;
+        gp.snapCamera();
+        // 油量从高往下降,直到刚好响起第一级报警
+        p.fuel = p.maxFuel();
+        for (double f = p.maxFuel(); f > 0; f -= 0.01) {
+            p.fuel = f;
+            if (gp.fuelAlarm() >= 1) break;
+        }
+        // 再挖两块
+        int got = 0;
+        for (int i = 0; i < 2; i++) {
+            int before = p.cargoCount();
+            SelfTest.hold(gp, KeyEvent.VK_RIGHT, 0.2);
+            for (int t = 0; t < 600 && p.digging; t++) gp.update(1 / 60.0);
+            got += p.cargoCount() - before;
+            if (gp.state != GamePanel.State.PLAY) return false;
+        }
+        // 开回竖井,往上飞
+        SelfTest.hold(gp, KeyEvent.VK_LEFT, 1.5);
+        gp.keys[KeyEvent.VK_UP] = true;
+        for (int t = 0; t < 60 * 300 && p.depthRows() > -0.2 && gp.state == GamePanel.State.PLAY; t++) gp.update(1 / 60.0);
+        gp.keys[KeyEvent.VK_UP] = false;
+        boolean ok = gp.state == GamePanel.State.PLAY && got == 2;
+        if (!ok) System.out.printf("    第%d档 %d格深:挖到 %d 块,状态 %s,剩油 %.2f%n", tier + 1, depth, got, gp.state, p.fuel);
+        for (int rr = World.SURFACE - 3; rr <= r; rr++) gp.world.set(c, rr, World.DIRT);
+        if (gp.state != GamePanel.State.PLAY) { run(gp, 3); gp.respawn(); }
+        java.util.Arrays.fill(p.cargo, 0);
+        return ok;
+    }
+
+    static void alarmMargin(GamePanel gp) throws Exception {
+        boolean all = true;
+        int[][] cases = {{0, 40}, {0, 60}, {1, 90}, {2, 150}, {3, 220}, {4, 300}, {5, 380}, {6, 400}};
+        for (int[] k : cases) all &= alarmThenTwoMore(gp, k[0], k[1]);
+        check(all, "报警响起后再挖 2 块矿、开回竖井,仍能飞回地面");
+
+        // 地温只看深度,不随散热器变化
+        Player p = gp.p;
+        setAll(p, 0);
+        int t0 = gp.groundTempC(300);
+        p.level[Upgrades.RADIATOR] = 6;
+        check(gp.groundTempC(300) == t0 && t0 > 100, "地温不随散热器变化,300 格深 " + t0 + "℃");
+        check(gp.heat(300) < 1 + GamePanel.HEAT_GAIN * 250 / 359.0, "散热器仍然减轻地热油耗");
+        gp.respawn();
+    }
+
+    /** 飘字(挖到矿加的钱等)要画在小地图前面 */
+    static void textOverMinimap(GamePanel gp) throws Exception {
+        int[] cr = room(gp, 60);
+        gp.p.x = (World.COLS - 1) * T + 3;
+        gp.snapCamera();
+        gp.texts.clear();
+        gp.addText(gp.camX + GamePanel.MINI_X + 12, gp.camY + 300, "测试测试", new java.awt.Color(255, 0, 255));
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(GamePanel.VW, GamePanel.VH, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = img.createGraphics();
+        gp.render(g);
+        g.dispose();
+        int hits = 0;
+        for (int y = GamePanel.MINI_Y; y < GamePanel.MINI_Y + GamePanel.MINI_H; y++)
+            for (int x = GamePanel.MINI_X; x < GamePanel.MINI_X + GamePanel.MINI_W; x++) {
+                int rgb = img.getRGB(x, y), rr = (rgb >> 16) & 255, gg = (rgb >> 8) & 255, bb = rgb & 255;
+                if (rr > 200 && bb > 200 && gg < 90) hits++;
+            }
+        check(hits > 5, "飘字画在小地图前面(小地图区域里看得到飘字 " + hits + " 个像素)");
+        gp.texts.clear();
         gp.respawn();
     }
 }
