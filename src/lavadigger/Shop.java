@@ -12,7 +12,10 @@ final class Shop {
         new Color(196, 62, 50), new Color(55, 115, 190), new Color(95, 98, 110), new Color(140, 80, 170)
     };
 
-    static final int SPAWN_COL = 22;
+    /** 出生/重生在加油站门口:水泥地挖不动,不会掉进自己挖的坑 */
+    static final int SPAWN_COL = 4;
+    /** 新手开挖区(这几列前几层保证是普通泥土) */
+    static final int START_DIG_COL = 22;
 
     static boolean isUnderShop(int c) {
         for (int i = 0; i < COL.length; i++) {

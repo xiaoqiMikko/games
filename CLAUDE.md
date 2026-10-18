@@ -37,6 +37,7 @@ java -cp "$S/testcls" lavadigger.SelfTest "$S/shots"     # 退出码 0 = 全部�
 - **`World`**:`byte[]` 网格(48×420,每格 32px,第 8 行 `SURFACE` 是地表)。矿物编码为 `ORE + 矿物下标`。`generate(seed)` 按深度概率生成,再做成团扩散、挖空洞、单独摆放 6 颗熔岩之心,最后清理出生点。
 - **数值表集中在两处**:`Upgrades`(6 种部件 × 7 档的数值和价格、道具)和 `Mineral`(价值和深度分布);油耗、油价、摔落阈值、救援费等常量在 `GamePanel` 顶部。调平衡只改这三处。
 - **`Shop`**:四家商店的列位置决定了地表哪几格是水泥(`World.generate` 用 `isUnderShop`),以及进店判定(`Shop.at`)。挪动商店位置会同时影响这两处。
+- **`Art`**:商店和矿车用 Java2D 矢量绘制(每帧绘制,带动画),`GamePanel.drawShop` 和 `drawVehicle` 只负责转调。
 - **`Textures`**:全部贴图在启动时用代码生成,没有图片资源;土层颜色按深度分 5 档(`band()`)。**`Sfx`** 用代码合成 PCM 音效,声卡不可用时静默。
 - **`SaveManager`**:存到 `~/.lava-digger/save.properties`,整张地图用 Base64 保存。离开商店、暂停菜单、重生、关窗口时自动存。给 `Player` 新增需要持久化的字段时,要同时改 `save` 和 `load`。
 

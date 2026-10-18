@@ -120,7 +120,7 @@ final class World {
         }
         // 出生点附近前几层保证是普通泥土,新手友好
         for (int r = SURFACE; r < SURFACE + 3; r++) {
-            for (int c = Shop.SPAWN_COL - 2; c <= Shop.SPAWN_COL + 2; c++) {
+            for (int c = Shop.START_DIG_COL - 2; c <= Shop.START_DIG_COL + 2; c++) {
                 byte t = get(c, r);
                 if (t == ROCK || t == GAS || t == LAVA || t == AIR) set(c, r, DIRT);
             }

@@ -17,12 +17,13 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
 
     // 物理与经济参数
     static final double GRAVITY = 700;
-    static final double FUEL_IDLE = 0.017, FUEL_DRIVE = 0.12, FUEL_THRUST = 0.30, FUEL_DRILL = 0.28; // 升/秒
+    static final double FUEL_IDLE = 0.0085, FUEL_DRIVE = 0.06, FUEL_THRUST = 0.14, FUEL_DRILL = 0.13; // 升/秒(怠速:出厂油箱约 20 分钟耗光)
     static final double FUEL_PRICE = 2.0, REPAIR_PRICE = 12.0;
     static final double DIG_BASE = 0.75;     // 出厂钻头挖一格泥土的秒数
     static final double DEATH_FEE = 0.25;    // 爆炸后的救援费:现金的 25%
     static final double FALL_SAFE = 500;     // 落地速度超过这个才扣血
     static final double LOW_FUEL = 0.2;
+    static final double RETURN_MARGIN = 1.5, RETURN_EXTRA = 0.5; // 剩油 < 回程油×1.5+0.5 升 就报警
     static final double METERS_PER_ROW = 3;
 
     enum State { TITLE, PLAY, SHOP, PAUSE, EXPLODING, REPORT, HELP }
@@ -150,7 +151,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 int dir = left ? -1 : 1;
                 p.facing = dir;
                 p.vx += dir * acc * dt;
-                p.fuel -= FUEL_DRIVE * dt;
+                if (p.depthRows() > 0.5) p.fuel -= FUEL_DRIVE * dt; // 地面上开车不耗油,飞行照常耗油
             } else {
                 double fr = (p.onGround ? 900 : 260) * dt;
                 p.vx = Math.abs(p.vx) <= fr ? 0 : p.vx - Math.signum(p.vx) * fr;
@@ -166,6 +167,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
             p.vy = Math.max(-130 * eng, Math.min(750, p.vy));
 
             moveX(dt);
+            if (up) cornerAssist(dt, left ^ right ? (left ? -1 : 1) : 0);
             double impact = moveY(dt);
             p.wheelAngle += p.vx * dt / 4;
             if (impact > FALL_SAFE) damage((impact - FALL_SAFE) / 50.0, "摔伤");
@@ -183,17 +185,68 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         if (depth > p.maxDepth) p.maxDepth = depth;
         if (p.hull < p.maxHull() * 0.3 && fx.nextDouble() < dt * 6) spawnSmoke(p.x + 6, p.y, false);
 
-        if (state == State.PLAY && p.fuel / p.maxFuel() < LOW_FUEL) {
+        int alarm = fuelAlarm();
+        if (state == State.PLAY && alarm > 0) {
             beepTimer -= dt;
             if (beepTimer <= 0) {
                 sfx.beep();
-                beepTimer = p.fuel / p.maxFuel() < 0.1 ? 0.45 : 0.9;
+                beepTimer = alarm == 2 ? 0.45 : 0.9;
             }
         }
         if (p.fuel <= 0 && state == State.PLAY) {
             p.fuel = 0;
             explode("燃油耗尽");
         }
+    }
+
+    static final double ASSIST_RANGE = 14;  // 最多帮忙挪多少像素
+    static final double ASSIST_SPEED = 90;  // 挪动速度(像素/秒),慢一点才不显眼
+
+    /**
+     * 拐角辅助:往上飞时车顶快撞到边缘,但旁边不远就有能钻上去的开口,
+     * 就把车慢慢推向开口,免得一格宽的竖井必须对得很准才能飞进去。
+     * 玩家按着反方向时不推。
+     */
+    void cornerAssist(double dt, int inputDir) {
+        int rA = (int) Math.floor(p.y / T) - 1;           // 车顶上方即将进入的那一行
+        if (p.y - (rA + 1) * T > 10) return;              // 离天花板还远
+        int c0 = (int) Math.floor(p.x / T), c1 = (int) Math.floor((p.x + Player.W - 0.001) / T);
+        if (!blocked2(rA, c0, c1)) return;                // 上面是通的,不用帮
+        int r0 = (int) Math.floor(p.y / T), r1 = (int) Math.floor((p.y + Player.H - 0.001) / T);
+        double best = Double.MAX_VALUE;
+        for (int c = c0 - 1; c <= c1 + 1; c++) {
+            if (world.solid(c, rA)) continue;
+            double lo = c * T, hi = c * T + T - Player.W;  // 车整个落在这一列里的 x 范围
+            double dx = p.x < lo ? lo - p.x : p.x > hi ? hi - p.x : 0;
+            if (dx == 0 || Math.abs(dx) > ASSIST_RANGE || Math.abs(dx) >= Math.abs(best)) continue;
+            // 挪过去的路上不能被墙挡住
+            double nx = p.x + dx;
+            int n0 = (int) Math.floor(nx / T), n1 = (int) Math.floor((nx + Player.W - 0.001) / T);
+            boolean clear = true;
+            for (int cc = n0; cc <= n1 && clear; cc++) if (blocked(cc, r0, r1)) clear = false;
+            if (clear) best = dx;
+        }
+        if (best == Double.MAX_VALUE) return;
+        if (inputDir != 0 && Math.signum(best) != inputDir) return;
+        p.x += Math.signum(best) * Math.min(Math.abs(best), ASSIST_SPEED * dt);
+        if (inputDir == 0) p.vx = 0;
+    }
+
+    /** 估算从当前深度直线飞回地面需要的油(升) */
+    double returnFuel() {
+        double rows = Math.max(0, p.depthRows());
+        double upSpeed = 130 * p.engineMul();
+        return rows * T / upSpeed * (FUEL_THRUST + FUEL_IDLE);
+    }
+
+    /** 0 = 正常, 1 = 燃油不足(该往回走了), 2 = 危险(只剩勉强够回去的油) */
+    int fuelAlarm() {
+        double ff = p.fuel / p.maxFuel();
+        boolean under = p.depthRows() > 0.5;
+        double ret = returnFuel();
+        if (ff < 0.1 || (under && p.fuel < ret * 1.1 + 0.2)) return 2;
+        if (ff < LOW_FUEL || (under && p.fuel < ret * RETURN_MARGIN + RETURN_EXTRA)) return 1;
+        return 0;
     }
 
     boolean blocked(int c, int r0, int r1) {
@@ -881,59 +934,8 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
 
     void drawShop(Graphics2D g, int i, int ox, int oy) {
         int x = Shop.COL[i] * T - ox, w = Shop.WIDTH[i] * T, ground = World.SURFACE * T - oy;
-        if (x + w < 0 || x > VW || ground < 0 || ground - 140 > VH) return;
-        Color c = Shop.COLORS[i];
-        int h = 92, y = ground - h;
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        // 墙
-        g.setColor(c);
-        g.fillRect(x + 4, y, w - 8, h);
-        g.setColor(c.darker());
-        g.fillRect(x + 4, y + h - 8, w - 8, 8);
-        g.drawRect(x + 4, y, w - 9, h - 1);
-        // 屋顶
-        Path2D.Double roof = new Path2D.Double();
-        roof.moveTo(x - 4, y + 2);
-        roof.lineTo(x + 12, y - 18);
-        roof.lineTo(x + w - 12, y - 18);
-        roof.lineTo(x + w + 4, y + 2);
-        roof.closePath();
-        g.setColor(c.darker().darker());
-        g.fill(roof);
-        // 招牌
-        g.setFont(fontB(14));
-        FontMetrics fm = g.getFontMetrics();
-        String name = Shop.NAMES[i];
-        int sw = fm.stringWidth(name) + 16;
-        int bx = x + (w - sw) / 2, by = y - 36;
-        g.setColor(new Color(30, 25, 20));
-        g.fillRoundRect(bx, by, sw, 24, 6, 6);
-        g.setColor(new Color(255, 215, 90));
-        g.drawRoundRect(bx, by, sw, 24, 6, 6);
-        g.drawString(name, bx + 8, by + 17);
-        // 门
-        int dw = 34, dx = x + (w - dw) / 2;
-        g.setColor(new Color(40, 30, 25));
-        g.fillRect(dx, ground - 46, dw, 46);
-        g.setColor(new Color(255, 220, 120, 70));
-        g.fillRect(dx + 3, ground - 43, dw - 6, 40);
-        // 窗
-        g.setColor(new Color(170, 220, 255));
-        if (w > 120) {
-            g.fillRect(x + 14, y + 16, 22, 18);
-            g.fillRect(x + w - 36, y + 16, 22, 18);
-        } else {
-            g.fillRect(x + 12, y + 14, 18, 16);
-            g.fillRect(x + w - 30, y + 14, 18, 16);
-        }
-        // 图标
-        g.setFont(fontB(20));
-        g.setColor(new Color(255, 255, 255, 230));
-        String icon = i == Shop.FUEL ? "⛽" : i == Shop.SELL ? "$" : i == Shop.UPGRADE ? "⚙" : "★";
-        if (!g.getFont().canDisplay(icon.charAt(0))) icon = i == Shop.FUEL ? "油" : i == Shop.UPGRADE ? "修" : "★";
-        int iw = g.getFontMetrics().stringWidth(icon);
-        g.drawString(icon, x + (w - iw) / 2, y + 30);
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+        if (x + w < -20 || x > VW + 20 || ground < 0 || ground - 160 > VH) return;
+        Art.shop(g, i, x, w, ground, time, fontB(14));
     }
 
     void drawTiles(Graphics2D g, int ox, int oy) {
@@ -949,6 +951,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                     continue;
                 }
                 g.drawImage(tex.tile(t, c, r, time), x, y, null);
+                if (t >= World.ORE + 3) sparkle(g, c, r, x, y);
             }
         }
         // 和空洞相邻的边加暗边,更有立体感
@@ -965,86 +968,22 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         }
     }
 
+    /** 银矿以上的贵重矿石偶尔闪一下 */
+    void sparkle(Graphics2D g, int c, int r, int x, int y) {
+        int h = Textures.hash(c * 7 + 3, r * 13 + 1);
+        double phase = (time * 0.6 + (h % 1000) / 1000.0 * 3) % 3;   // 每 5 秒左右闪一次
+        if (phase > 0.35) return;
+        double k = Math.sin(phase / 0.35 * Math.PI);
+        double sx = x + 6 + (h >> 4) % 20, sy = y + 6 + (h >> 9) % 20, len = 2 + 4 * k;
+        g.setColor(new Color(255, 255, 255, (int) (230 * k)));
+        g.fillRect((int) (sx - len), (int) sy, (int) (len * 2 + 1), 1);
+        g.fillRect((int) sx, (int) (sy - len), 1, (int) (len * 2 + 1));
+        g.fillRect((int) sx - 1, (int) sy - 1, 3, 3);
+    }
+
     void drawVehicle(Graphics2D g, double sx, double sy) {
-        AffineTransform old = g.getTransform();
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.translate(sx + Player.W / 2.0, sy + Player.H / 2.0);
-        boolean drillDown = p.digging && p.digDir == 0;
-        g.scale(p.facing, 1);
-
-        if (p.thrusting && state == State.PLAY) {
-            for (int fxp : new int[]{-8, 4}) {
-                double len = 7 + fx.nextDouble() * 7;
-                Path2D.Double fl = new Path2D.Double();
-                fl.moveTo(fxp - 3, 11);
-                fl.lineTo(fxp + 3, 11);
-                fl.lineTo(fxp, 11 + len);
-                fl.closePath();
-                g.setColor(new Color(255, 120, 20, 220));
-                g.fill(fl);
-                g.setColor(new Color(255, 240, 150));
-                g.fill(new Ellipse2D.Double(fxp - 1.5, 11, 3, len * 0.5));
-            }
-        }
-
-        // 钻头
-        double spin = time * (p.digging ? 40 : 6);
-        Path2D.Double drill = new Path2D.Double();
-        if (drillDown) {
-            drill.moveTo(-6, 10);
-            drill.lineTo(6, 10);
-            drill.lineTo(0, 22);
-        } else {
-            drill.moveTo(9, -4);
-            drill.lineTo(9, 7);
-            drill.lineTo(20, 1.5);
-        }
-        drill.closePath();
-        g.setPaint(drillDown ? new GradientPaint(-6, 0, new Color(150, 150, 160), 6, 0, new Color(230, 230, 240))
-            : new GradientPaint(0, -4, new Color(230, 230, 240), 0, 7, new Color(130, 130, 140)));
-        g.fill(drill);
-        Shape oldClip = g.getClip();
-        g.clip(drill);
-        g.setColor(new Color(80, 80, 90));
-        for (int k = 0; k < 5; k++) {
-            double o = ((spin + k * 3) % 15);
-            if (drillDown) g.draw(new Line2D.Double(-7, 10 + o, 7, 8 + o));
-            else g.draw(new Line2D.Double(9 + o, -5, 7 + o, 8));
-        }
-        g.setClip(oldClip);
-        g.setColor(new Color(60, 60, 70));
-        g.draw(drill);
-
-        // 履带
-        g.setColor(new Color(45, 45, 50));
-        g.fill(new RoundRectangle2D.Double(-13, 3, 23, 9, 8, 8));
-        for (int wx : new int[]{-9, -3, 3}) {
-            g.setColor(new Color(120, 120, 128));
-            g.fill(new Ellipse2D.Double(wx - 3, 4.5, 6, 6));
-            g.setColor(new Color(60, 60, 66));
-            double a = p.wheelAngle;
-            g.draw(new Line2D.Double(wx - Math.cos(a) * 2.5, 7.5 - Math.sin(a) * 2.5, wx + Math.cos(a) * 2.5, 7.5 + Math.sin(a) * 2.5));
-        }
-        // 车身
-        g.setColor(new Color(245, 165, 30));
-        g.fill(new RoundRectangle2D.Double(-13, -5, 23, 10, 5, 5));
-        g.setColor(new Color(205, 70, 35));
-        g.fill(new Rectangle2D.Double(-13, 0, 23, 2));
-        g.setColor(new Color(120, 70, 10));
-        g.draw(new RoundRectangle2D.Double(-13, -5, 23, 10, 5, 5));
-        // 驾驶舱
-        g.setColor(new Color(225, 145, 25));
-        g.fill(new RoundRectangle2D.Double(-11, -12, 12, 9, 4, 4));
-        g.setColor(new Color(150, 220, 255));
-        g.fill(new RoundRectangle2D.Double(-9, -10.5, 8, 5, 2, 2));
-        g.setColor(new Color(255, 255, 255, 180));
-        g.fill(new Rectangle2D.Double(-8, -10, 2, 2));
-        // 车灯
-        g.setColor(new Color(255, 250, 190));
-        g.fill(new Ellipse2D.Double(6, -4, 4, 3));
-
-        g.setTransform(old);
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+        Art.vehicle(g, sx + Player.W / 2.0, sy + Player.H / 2.0, p.facing, p.digging && p.digDir == 0, p.digging,
+            p.thrusting && state == State.PLAY && !p.digging, p.wheelAngle, time, fx, p.hull < p.maxHull() * 0.3);
     }
 
     void drawParticles(Graphics2D g, int ox, int oy) {
@@ -1118,9 +1057,21 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         g.drawString(depthMeters() + " 米", 160, 39);
 
         double ff = p.fuel / p.maxFuel();
-        boolean flash = ff < LOW_FUEL && ((int) (time * 4)) % 2 == 0;
-        Color fuelC = ff > 0.5 ? new Color(80, 210, 90) : ff > LOW_FUEL ? new Color(240, 200, 50) : (flash ? new Color(255, 60, 50) : new Color(150, 30, 25));
+        int alarm = fuelAlarm();
+        boolean flash = alarm > 0 && ((int) (time * 4)) % 2 == 0;
+        Color fuelC = alarm > 0 ? (flash ? new Color(255, 60, 50) : new Color(150, 30, 25))
+            : ff > 0.5 ? new Color(80, 210, 90) : new Color(240, 200, 50);
         drawBar(g, 250, "燃油", ff, fuelC, String.format("%.1f / %.0f 升", p.fuel, p.maxFuel()));
+        // 白色刻度线:飞回地面大约需要的油
+        double ret = returnFuel();
+        if (ret > 0.05) {
+            int bx = 284 + (int) (170 * Math.min(1, ret / p.maxFuel()));
+            g.setColor(Color.WHITE);
+            g.fillRect(bx - 1, 5, 2, 20);
+            g.setFont(font(11));
+            g.setColor(new Color(220, 220, 220));
+            g.drawString(String.format("回程约 %.1f 升", ret), 372, 40);
+        }
         double hf = p.hull / p.maxHull();
         Color hullC = hf > 0.5 ? new Color(80, 170, 240) : hf > 0.25 ? new Color(240, 160, 50) : new Color(240, 60, 50);
         drawBar(g, 470, "车身", hf, hullC, String.format("%.1f / %.0f", p.hull, p.maxHull()));
@@ -1162,7 +1113,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 g.setFont(fontB(16));
                 FontMetrics fm = g.getFontMetrics();
                 int w = fm.stringWidth(t) + 24;
-                int x = (int) (p.x + Player.W / 2.0 - camX - w / 2.0), y = (int) (World.SURFACE * T - camY - 150);
+                int x = (int) (p.x + Player.W / 2.0 - camX - w / 2.0), y = (int) (World.SURFACE * T - camY - 182);
                 x = Math.max(4, Math.min(VW - w - 4, x));
                 g.setColor(new Color(0, 0, 0, 190));
                 g.fillRoundRect(x, y, w, 30, 10, 10);
@@ -1171,16 +1122,16 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 g.drawString(t, x + 12, y + 21);
             }
         }
-        double ff = p.fuel / p.maxFuel();
-        if (ff < LOW_FUEL && state == State.PLAY) {
-            float pulse = (float) (0.5 + 0.5 * Math.sin(time * (ff < 0.1 ? 14 : 8)));
+        int alarm = fuelAlarm();
+        if (alarm > 0 && state == State.PLAY) {
+            float pulse = (float) (0.5 + 0.5 * Math.sin(time * (alarm == 2 ? 14 : 8)));
             g.setColor(new Color(255, 0, 0, (int) (40 + 90 * pulse)));
             for (int i = 0; i < 4; i++) g.drawRect(i * 3, 48 + i * 3, VW - 1 - i * 6, VH - 49 - i * 6);
             g.setColor(new Color(255, 0, 0, (int) (30 * pulse)));
             g.fillRect(0, 48, VW, VH - 48);
             if (((int) (time * 4)) % 2 == 0) {
                 g.setFont(fontB(26));
-                String t = ff < 0.1 ? "燃油快烧光了!车要爆炸了!" : "燃油不足!快回地面加油!";
+                String t = alarm == 2 ? "燃油只够勉强飞回去了!马上往上飞!" : "燃油不足!该回地面加油了!";
                 int w = g.getFontMetrics().stringWidth(t);
                 outlined(g, t, (VW - w) / 2, 100, new Color(255, 70, 60), 255);
             }
@@ -1316,7 +1267,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                     "5. 去「改装厂」升级,再去「加油站」加油修车,继续往下挖",
                     "#诀窍",
                     "越深的矿越值钱,但往回飞的路也越长 —— 算好来回的油",
-                    "油量低于 20% 会报警、屏幕闪红,低于 10% 会急促报警",
+                    "燃油条上的白线 = 飞回地面大约要的油;剩油快不够回程时会报警、屏幕闪红",
                     "停在地面不耗油;停在地下也会慢慢耗油,别在下面发呆",
                     "地底最深处藏着 6 颗「熔岩之心」,一颗值 $30,000",
                 };

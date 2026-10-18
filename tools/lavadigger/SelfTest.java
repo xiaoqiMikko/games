@@ -29,6 +29,8 @@ public final class SelfTest {
         gp.newGame(42);
         check(gp.state == GamePanel.State.PLAY, "新游戏进入 PLAY");
         run(gp, 0.5);
+        check(gp.nearShop() == Shop.FUEL, "开局停在加油站门口");
+        drive(gp, Shop.START_DIG_COL * World.T + World.T / 2.0);
         shot(gp, "02-surface");
 
         // 向下钻 6 秒
@@ -108,13 +110,13 @@ public final class SelfTest {
         double fDeep = gp.p.fuel;
         run(gp, 10);
         System.out.printf("地下停 10 秒: 油 %.3f -> %.3f%n", fDeep, gp.p.fuel);
-        check(fDeep - gp.p.fuel > 0.1 && fDeep - gp.p.fuel < 0.25, "停在地下 10 秒少量耗油");
+        check(fDeep - gp.p.fuel > 0.05 && fDeep - gp.p.fuel < 0.15, "停在地下 10 秒少量耗油");
         shot(gp, "08-deep-lowfuel");
 
         // 油耗尽 -> 爆炸 -> 结算
         gp.p.money = 1000;
         gp.p.cargo[3] = 2;
-        gp.p.fuel = 0.01;
+        gp.p.fuel = 0.005;
         run(gp, 1.0);
         check(gp.state == GamePanel.State.EXPLODING, "油耗尽后爆炸, state=" + gp.state);
         run(gp, 0.15);
@@ -147,6 +149,60 @@ public final class SelfTest {
         double h1 = gp.p.hull;
         run(gp, 2);
         System.out.printf("从天上摔下: 车身 %.1f -> %.1f%n", h1, gp.p.hull);
+
+        // 地面开车不耗油,地面起飞照常耗油
+        gp.respawn();
+        double f0 = gp.p.fuel;
+        hold(gp, KeyEvent.VK_RIGHT, 2);
+        hold(gp, KeyEvent.VK_LEFT, 2);
+        check(gp.p.fuel == f0, "地面开车不耗油");
+        hold(gp, KeyEvent.VK_UP, 1);
+        check(gp.p.fuel < f0, "地面起飞耗油");
+        run(gp, 3);
+
+        // 右边两家店的画面
+        gp.p.x = 36 * World.T;
+        gp.p.y = World.SURFACE * World.T - Player.H;
+        gp.snapCamera();
+        run(gp, 0.3);
+        shot(gp, "11-shops-right");
+        gp.p.x = 6 * World.T;
+        gp.snapCamera();
+        run(gp, 0.3);
+        shot(gp, "12-shops-left");
+
+        // 拐角辅助:横向隧道里没对准头顶的一格竖井,按住↑也能滑进去
+        for (int offset : new int[]{6, 10, 14, -8}) {
+            int sc = 20, tr = World.SURFACE + 30;
+            for (int r = tr - 12; r <= tr + 1; r++)
+                for (int c = sc - 3; c <= sc + 4; c++) gp.world.set(c, r, World.DIRT);
+            for (int r = tr - 10; r <= tr; r++) gp.world.set(sc, r, World.AIR);      // 一格宽竖井
+            for (int c = sc - 2; c <= sc + 3; c++) gp.world.set(c, tr, World.AIR);    // 横向隧道
+            gp.p.x = sc * World.T + 3 + offset;
+            gp.p.y = tr * World.T + World.T - Player.H;
+            gp.p.vx = gp.p.vy = 0;
+            gp.p.fuel = gp.p.maxFuel();
+            gp.p.hull = gp.p.maxHull();
+            double d0 = gp.p.depthRows();
+            hold(gp, KeyEvent.VK_UP, 2.5);
+            double rise = d0 - gp.p.depthRows();
+            System.out.printf("拐角辅助 偏移 %dpx: 上升 %.1f 格%n", offset, rise);
+            check(rise > 5, "偏移 " + offset + "px 也能飞进竖井");
+        }
+        // 偏太远(整整一格)不应该被吸过去
+        {
+            int sc = 20, tr = World.SURFACE + 30;
+            for (int r = tr - 12; r <= tr + 1; r++)
+                for (int c = sc - 3; c <= sc + 4; c++) gp.world.set(c, r, World.DIRT);
+            for (int r = tr - 10; r <= tr; r++) gp.world.set(sc, r, World.AIR);
+            for (int c = sc - 2; c <= sc + 3; c++) gp.world.set(c, tr, World.AIR);
+            gp.p.x = (sc + 2) * World.T + 3;
+            gp.p.y = tr * World.T + World.T - Player.H;
+            gp.p.vx = gp.p.vy = 0;
+            double xFar = gp.p.x;
+            hold(gp, KeyEvent.VK_UP, 1.5);
+            check(Math.abs(gp.p.x - xFar) < 0.5, "离竖井太远时不会被自动挪动");
+        }
 
         // 存读档往返
         SaveManager.enabled = true;
