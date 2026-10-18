@@ -63,7 +63,7 @@ public final class V4Test {
         for (int t = 0; t < 7; t++) tankOk &= Upgrades.VALUES[Upgrades.FUEL][t] == tanks[t];
         check(tankOk, "油箱各档 10/15/25/40/58/78/100");
         check(Upgrades.KINDS == 7 && Upgrades.PROBE == 6, "第 7 种部件:探测器");
-        check(Upgrades.PRICES[Upgrades.FUEL][6] == 305000 && Upgrades.PRICES[Upgrades.PROBE][1] == 300, "价格表照抄设计");
+        check(Upgrades.PRICES[Upgrades.FUEL][6] == 410000 && Upgrades.PRICES[Upgrades.PROBE][1] == 550, "价格表按经济模拟校准后的值");
 
         // 回程估算按地热累加:300 格深处比不算地热时要多
         setAll(p, 0);
@@ -422,6 +422,8 @@ public final class V4Test {
     static void task7(GamePanel gp) throws Exception {
         File dir = new File(SelfTest.out, "v3save");
         dir.mkdirs();
+        File[] old = dir.listFiles();
+        if (old != null) for (File f : old) f.delete(); // 上次运行留下的存档
         SaveManager.enabled = true;
         SaveManager.dirOverride = dir;
         try {
