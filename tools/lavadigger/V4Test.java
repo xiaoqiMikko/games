@@ -26,6 +26,7 @@ public final class V4Test {
         task5(gp);
         task6(gp);
         task7(gp);
+        reviewFixes(gp);
 
         System.out.println(SelfTest.fails == 0 ? "V4 全部通过" : ("V4 失败 " + SelfTest.fails + " 项"));
         System.exit(SelfTest.fails == 0 ? 0 : 1);
@@ -484,5 +485,32 @@ public final class V4Test {
             SaveManager.dirOverride = null;
             SaveManager.enabled = false;
         }
+    }
+
+    static void reviewFixes(GamePanel gp) throws Exception {
+        Player p = gp.p;
+        // 满舱时钻宝藏:不能开钻,宝藏留在原地
+        setAll(p, 0);
+        int[] cr = room(gp, 40);
+        int alien = Mineral.FIRST_V4 + 3;
+        gp.world.set(cr[0], cr[1] + 1, (byte) (World.ORE + alien));
+        p.cargo[0] = p.cargoMax();
+        gp.rockMsgCooldown = 0;
+        gp.tryDigDown();
+        run(gp, 2);
+        check(!p.digging && gp.world.get(cr[0], cr[1] + 1) == World.ORE + alien, "满舱时挖不了宝藏,宝藏留在原地");
+        java.util.Arrays.fill(p.cargo, 0);
+        gp.respawn();
+
+        // 熔岩之心的深度带几乎全被挖空,放回地底也不能失败
+        World w = new World();
+        w.generate(3);
+        for (int r = World.ROWS - 18; r <= World.ROWS - 7; r++)
+            for (int c = 0; c < World.COLS; c++)
+                if (!(w.get(c, r) >= World.ORE && Mineral.isProtected(w.get(c, r) - World.ORE))) w.set(c, r, World.AIR);
+        int before = countTile(w, Mineral.HEART);
+        boolean ok = true;
+        for (int i = 0; i < 3; i++) ok &= w.placeProtected(Mineral.HEART, new java.util.Random(i));
+        check(ok && countTile(w, Mineral.HEART) == before + 3, "深度带被挖空时熔岩之心仍能放回地底");
     }
 }

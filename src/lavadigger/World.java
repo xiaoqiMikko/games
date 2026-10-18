@@ -129,6 +129,16 @@ final class World {
             set(c, r, (byte) (ORE + m));
             return true;
         }
+        // 随机找不到(这一带几乎被挖空了):按顺序找任意一格放下,实在没有实心格就放进空格里,保证不丢
+        for (int pass = 0; pass < 2; pass++)
+            for (int r = hi; r >= lo; r--)
+                for (int c = 1; c < COLS - 1; c++) {
+                    byte t = get(c, r);
+                    if (t == BEDROCK || t == CONCRETE || (t >= ORE && Mineral.isProtected(t - ORE))) continue;
+                    if (pass == 0 && t == AIR) continue;
+                    set(c, r, (byte) (ORE + m));
+                    return true;
+                }
         return false;
     }
 

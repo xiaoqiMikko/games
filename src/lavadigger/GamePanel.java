@@ -560,9 +560,9 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     void startDig(int c, int r, int dir) {
         byte t = world.get(c, r);
         if (t == World.AIR) return;
-        if (t == World.ORE + Mineral.HEART && p.cargoCount() >= p.cargoMax()) {
+        if (t >= World.ORE && Mineral.isProtected(t - World.ORE) && p.cargoCount() >= p.cargoMax()) {
             if (rockMsgCooldown <= 0) {
-                addText(p.x + Player.W / 2.0, p.y - 6, "货舱满了,装不下熔岩之心!先回去卖矿", new Color(255, 160, 40));
+                addText(p.x + Player.W / 2.0, p.y - 6, "货舱满了,装不下" + Mineral.ALL[t - World.ORE].name + "!先回去卖矿", new Color(255, 160, 40));
                 rockMsgCooldown = 1.5;
             }
             return;
