@@ -64,6 +64,14 @@ public final class SelfTest {
         // 开到收购站
         drive(gp, Shop.COL[Shop.SELL] * World.T + 60);
         check(gp.nearShop() == Shop.SELL, "到达收购站, nearShop=" + gp.nearShop());
+        // 停在店门口时,帧间隔有抖动也不能丢失"着地"(否则进店提示会闪)
+        java.util.Random jr = new java.util.Random(3);
+        int lost = 0;
+        for (int i = 0; i < 600; i++) {
+            gp.update(0.010 + jr.nextDouble() * 0.012);
+            if (gp.nearShop() != Shop.SELL) lost++;
+        }
+        check(lost == 0, "停在店门口 600 帧进店判定不闪, 丢失 " + lost + " 帧");
         int cargo = gp.p.cargoCount(), money = gp.p.money, val = gp.p.cargoValue();
         gp.openShop(Shop.SELL);
         shot(gp, "04-sell-shop");

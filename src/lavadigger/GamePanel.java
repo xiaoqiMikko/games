@@ -247,6 +247,18 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
             ny = 0;
             p.vy = Math.max(0, p.vy);
         }
+        // 贴地检测:很短的子步长里车只下沉极小的距离,会落在碰撞容差里被误判为悬空,
+        // 导致"着地"状态一帧有一帧没(进店提示闪烁、偶尔按↓钻不动)
+        if (!p.onGround && p.vy >= 0) {
+            int r = (int) Math.floor((ny + Player.H + 0.5) / T);
+            double gap = r * T - (ny + Player.H);
+            if (gap > -0.01 && gap <= 0.5 && blocked2(r, c0, c1)) {
+                ny = r * T - Player.H;
+                impact = Math.max(impact, p.vy);
+                p.vy = 0;
+                p.onGround = true;
+            }
+        }
         p.y = ny;
         return impact;
     }
