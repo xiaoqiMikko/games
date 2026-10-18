@@ -412,7 +412,7 @@ public final class SelfTest {
                 if (w1.tiles[i] >= World.ORE + Mineral.FIRST_V2) w1.tiles[i] = World.DIRT;
             SaveManager.save(w1, gp.p);
             File sf = SaveManager.file();
-            String txt = new String(java.nio.file.Files.readAllBytes(sf.toPath()), "ISO-8859-1").replace("version=3", "version=1");
+            String txt = new String(java.nio.file.Files.readAllBytes(sf.toPath()), "ISO-8859-1").replaceAll("version=\\d+", "version=1");
             java.nio.file.Files.write(sf.toPath(), txt.getBytes("ISO-8859-1"));
             World w1b = new World();
             Player p1b = new Player();

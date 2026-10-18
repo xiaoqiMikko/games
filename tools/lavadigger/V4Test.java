@@ -25,6 +25,7 @@ public final class V4Test {
         task4(gp);
         task5(gp);
         task6(gp);
+        task7(gp);
 
         System.out.println(SelfTest.fails == 0 ? "V4 全部通过" : ("V4 失败 " + SelfTest.fails + " 项"));
         System.exit(SelfTest.fails == 0 ? 0 : 1);
@@ -416,5 +417,70 @@ public final class V4Test {
 
     static void drive(GamePanel gp, double x) {
         SelfTest.drive(gp, x);
+    }
+
+    static void task7(GamePanel gp) throws Exception {
+        File dir = new File(SelfTest.out, "v3save");
+        dir.mkdirs();
+        SaveManager.enabled = true;
+        SaveManager.dirOverride = dir;
+        try {
+            // 造一个第 3 版存档:地图里只剩 4 颗心(卖了 1 颗,炸丢 1 颗),没有宝藏,部件只有 6 个数
+            World w = new World();
+            w.generate(99);
+            int removed = 0;
+            for (int i = 0; i < w.tiles.length; i++) {
+                int m = World.mineralOf(w.tiles[i]);
+                if (m == Mineral.HEART && removed < 2) { w.tiles[i] = World.DIRT; removed++; }
+                else if (m >= 0 && Mineral.isTreasure(m)) w.tiles[i] = World.DIRT;
+            }
+            Player p = new Player();
+            p.reset();
+            p.level[Upgrades.FUEL] = 6;
+            p.fuel = 100;
+            p.money = 777;
+            p.hearts = 1;
+            p.maxDepth = 120;
+            p.totalEarned = 5000;
+            SaveManager.save(w, p);
+            File f = SaveManager.file();
+            java.util.List<String> out = new java.util.ArrayList<>();
+            for (String line : java.nio.file.Files.readAllLines(f.toPath(), java.nio.charset.StandardCharsets.ISO_8859_1)) {
+                if (line.startsWith("milestones=") || line.startsWith("tips=") || line.startsWith("muted=")) continue;
+                if (line.startsWith("version=")) line = "version=3";
+                if (line.startsWith("level=")) line = "level=6,0,0,0,0,0";
+                if (line.startsWith("fuel=")) line = "fuel=130.0";
+                out.add(line);
+            }
+            java.nio.file.Files.write(f.toPath(), out, java.nio.charset.StandardCharsets.ISO_8859_1);
+
+            World w2 = new World();
+            Player p2 = new Player();
+            p2.level[Upgrades.PROBE] = 3; // 读档前残留的值不能带进来
+            check(SaveManager.load(w2, p2), "第 3 版存档能读");
+            check(p2.level[Upgrades.PROBE] == 0, "老存档探测器为 0 档");
+            check(countTile(w2, Mineral.HEART) + p2.hearts == World.HEARTS, "老存档补回丢失的熔岩之心,地图 " + countTile(w2, Mineral.HEART));
+            boolean all = true;
+            for (int k = 0; k < Mineral.TREASURES; k++) all &= countTile(w2, Mineral.FIRST_V4 + k) == Mineral.TREASURE_COUNT[k];
+            check(all, "老存档补齐全部宝藏");
+            check((p2.milestones & 0b11) == 0b11 && (p2.milestones & 0b100) == 0 && p2.money == 777,
+                "老存档按最深纪录(360 米)标记已领的里程碑,不补发奖金");
+            int want = (1 << GamePanel.TIP_DIG) | (1 << GamePanel.TIP_SELL) | (1 << GamePanel.TIP_HEAT) | (1 << GamePanel.TIP_QUAKE);
+            check((p2.tips & want) == want, "老存档按进度标记已看过的指引");
+            check(p2.fuel <= p2.maxFuel() + 1e-9 && p2.maxFuel() == 100, "老存档油量截到新油箱上限");
+
+            // 第 4 版存档往返
+            p2.milestones = 0b10101;
+            p2.tips = 0b1010;
+            SaveManager.save(w2, p2);
+            World w3 = new World();
+            Player p3 = new Player();
+            check(SaveManager.load(w3, p3), "第 4 版存档能读");
+            check(p3.milestones == 0b10101 && p3.tips == 0b1010 && java.util.Arrays.equals(w2.tiles, w3.tiles), "第 4 版存档往返一致");
+            check(countTile(w3, Mineral.HEART) == countTile(w2, Mineral.HEART), "第 4 版读档不会重复补心");
+        } finally {
+            SaveManager.dirOverride = null;
+            SaveManager.enabled = false;
+        }
     }
 }

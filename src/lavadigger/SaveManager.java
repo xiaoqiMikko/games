@@ -84,7 +84,7 @@ final class SaveManager {
     static void save(World w, Player p) {
         if (!enabled) return;
         Properties pr = new Properties();
-        pr.setProperty("version", "3");
+        pr.setProperty("version", "4");
         pr.setProperty("seed", Long.toString(w.seed));
         pr.setProperty("tiles", Base64.getEncoder().encodeToString(w.tiles));
         pr.setProperty("money", Integer.toString(p.money));
@@ -131,6 +131,10 @@ final class SaveManager {
             if (ver < 2) w.injectNewMinerals(Mineral.FIRST_V2, 0.6);
             else if (ver < 3) w.injectNewMinerals(Mineral.FIRST_V3, 0.35);
             p.money = Integer.parseInt(pr.getProperty("money"));
+            // 先清零:老存档里没有的新部件、新矿、新道具按 0 处理
+            java.util.Arrays.fill(p.cargo, 0);
+            java.util.Arrays.fill(p.level, 0);
+            java.util.Arrays.fill(p.items, 0);
             split(pr.getProperty("cargo"), p.cargo);
             split(pr.getProperty("level"), p.level);
             split(pr.getProperty("items"), p.items);
@@ -148,6 +152,7 @@ final class SaveManager {
             p.milestones = Integer.parseInt(pr.getProperty("milestones", "0"));
             p.tips = Integer.parseInt(pr.getProperty("tips", "0"));
             Sfx.muted = Boolean.parseBoolean(pr.getProperty("muted", "false"));
+            if (ver < 4) upgradeToV4(w, p);
             w.markDugFromSeed();
             p.vx = p.vy = 0;
             p.fallStartY = p.y; // 读档后从当前位置重新计算下落高度
@@ -157,6 +162,29 @@ final class SaveManager {
             System.err.println("读档失败: " + e);
             return false;
         }
+    }
+
+    /**
+     * 第 3 版及更早的存档升级到第 4 版:
+     * 补回以前炸丢的熔岩之心、摆上宝藏、按最深纪录标记已到过的里程碑(不补发奖金)和已经用不着的新手指引。
+     */
+    static void upgradeToV4(World w, Player p) {
+        java.util.Random rnd = new java.util.Random(w.seed ^ 0x4C415641L);
+        int hearts = p.hearts + p.cargo[Mineral.HEART];
+        for (byte t : w.tiles) if (t == World.ORE + Mineral.HEART) hearts++;
+        for (int i = hearts; i < World.HEARTS; i++) w.placeProtected(Mineral.HEART, rnd);
+        for (int k = 0; k < Mineral.TREASURES; k++) {
+            int m = Mineral.FIRST_V4 + k, have = p.cargo[m];
+            for (byte t : w.tiles) if (t == World.ORE + m) have++;
+            for (int i = have; i < Mineral.TREASURE_COUNT[k]; i++) w.placeProtected(m, rnd);
+        }
+        double meters = p.maxDepth * GamePanel.METERS_PER_ROW;
+        for (int i = 0; i < GamePanel.MILESTONE_M.length; i++)
+            if (meters >= GamePanel.MILESTONE_M[i]) p.milestones |= 1 << i;
+        if (p.maxDepth > 0) p.tips |= 1 << GamePanel.TIP_DIG;
+        if (p.totalEarned > 0) p.tips |= 1 << GamePanel.TIP_SELL;
+        if (p.maxDepth > GamePanel.HEAT_START) p.tips |= 1 << GamePanel.TIP_HEAT;
+        if (p.maxDepth > GamePanel.QUAKE_ROWS) p.tips |= 1 << GamePanel.TIP_QUAKE;
     }
 
     private static String join(int[] a) {
