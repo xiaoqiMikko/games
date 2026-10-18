@@ -55,6 +55,9 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     double shopMsgTimer, rockMsgCooldown, beepTimer, explodeTimer;
     boolean confirmNew, hasSave;
     String deathReason = "";
+    // 屏幕中间的大字消息(挖到宝藏等)
+    String centerMsg = "", centerSub = "";
+    double centerMsgTimer;
     final List<String> report = new ArrayList<>();
     long lastNanos;
     Timer timer;
@@ -106,6 +109,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         time += dt;
         if (state == State.PLAY || state == State.SHOP) p.playTime += dt;
         if (shopMsgTimer > 0) shopMsgTimer -= dt;
+        if (centerMsgTimer > 0) centerMsgTimer -= dt;
         switch (state) {
             case PLAY: {
                 double left = dt;
@@ -438,6 +442,13 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 sfx.pick();
                 spawnPickup(cx, cy, mi);
                 if (m == Mineral.HEART) addText(cx, cy - 34, "传说中的熔岩之心!!", new Color(255, 160, 40));
+                if (Mineral.isTreasure(m)) {
+                    centerMsg = "发现宝藏:" + mi.name + "   $" + fmtMoney(mi.value);
+                    centerSub = Mineral.TREASURE_TEXT[m - Mineral.FIRST_V4];
+                    centerMsgTimer = 4;
+                    spawnPickup(cx, cy, mi);
+                    for (int i = 0; i < 30; i++) spawnSpark(cx, cy);
+                }
             } else {
                 addText(cx, cy - 14, "货舱满了! " + mi.name + "掉了", new Color(255, 90, 80));
                 sfx.error();
@@ -1111,6 +1122,12 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                     case Mineral.FX_PINK:
                         glow(g, x, y, 19, new Color(255, 130, 200), (30 + 70 * pulse(1.8, seed)) * lit);
                         break;
+                    case Mineral.FX_TREASURE:
+                        glow(g, x, y, 20, new Color(255, 210, 90), (40 + 70 * pulse(1.3, seed)) * lit);
+                        break;
+                    case Mineral.FX_ALIEN:
+                        glow(g, x, y, 22, new Color(90, 255, 160), (50 + 100 * pulse(2.6, seed)) * lit);
+                        break;
                     case Mineral.FX_HEART: {
                         double k = pulse(3, 0);
                         float rad = (float) (22 + 8 * k);
@@ -1400,6 +1417,23 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 outlined(g, t, (VW - w) / 2, 100, new Color(255, 70, 60), 255);
             }
         }
+        if (centerMsgTimer > 0 && (state == State.PLAY || state == State.EXPLODING)) {
+            int a = (int) (255 * Math.min(1, centerMsgTimer / 0.6));
+            g.setFont(fontB(28));
+            int w1 = g.getFontMetrics().stringWidth(centerMsg);
+            g.setFont(font(17));
+            int w2 = g.getFontMetrics().stringWidth(centerSub);
+            int w = Math.max(w1, w2) + 60, bx = (VW - w) / 2, by = 170;
+            g.setColor(new Color(20, 14, 6, a * 200 / 255));
+            g.fillRoundRect(bx, by, w, 84, 14, 14);
+            g.setColor(new Color(255, 205, 70, a));
+            g.drawRoundRect(bx, by, w, 84, 14, 14);
+            g.setFont(fontB(28));
+            g.drawString(centerMsg, (VW - w1) / 2, by + 38);
+            g.setFont(font(17));
+            g.setColor(new Color(235, 225, 200, a));
+            g.drawString(centerSub, (VW - w2) / 2, by + 68);
+        }
         // 货舱满了:常驻提醒
         if (state == State.PLAY && p.cargoCount() >= p.cargoMax() && p.depthRows() > 0.5) {
             String t = "货舱满了!再挖到的矿会丢掉 —— 回地面卖矿吧";
@@ -1622,10 +1656,12 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
     }
 
     void drawMineralTable(Graphics2D g, int x, int y) {
-        int n = Mineral.BY_VALUE.length, rows = (n + 2) / 3;
+        List<Integer> list = new ArrayList<>();
+        for (int i : Mineral.BY_VALUE) if (!Mineral.isTreasure(i)) list.add(i); // 宝藏另有一页
+        int n = list.size(), rows = (n + 2) / 3;
         y -= 22;
         for (int k = 0; k < n; k++) {
-            int i = Mineral.BY_VALUE[k];
+            int i = list.get(k);
             Mineral m = Mineral.ALL[i];
             int cx = x + (k / rows) * 226, cy = y + (k % rows) * 40;
             int b = Textures.band(World.SURFACE + Math.max(1, m.peakDepth));

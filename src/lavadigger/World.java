@@ -71,6 +71,49 @@ final class World {
         }
     }
 
+    /** 摆放全部宝藏(新地图和老存档升级共用) */
+    void placeTreasures(Random rnd) {
+        for (int k = 0; k < Mineral.TREASURES; k++)
+            for (int n = 0; n < Mineral.TREASURE_COUNT[k]; n++) placeProtected(Mineral.FIRST_V4 + k, rnd);
+    }
+
+    /**
+     * 把熔岩之心或宝藏放到它的深度范围里一个随机的实心格(不覆盖其它宝物)。
+     * 熔岩之心四周按 60% 的概率围上熔岩。
+     */
+    boolean placeProtected(int m, Random rnd) {
+        int lo, hi;
+        if (m == Mineral.HEART) {
+            lo = ROWS - 18;
+            hi = ROWS - 7;
+        } else {
+            lo = SURFACE + Mineral.ALL[m].minDepth;
+            hi = SURFACE + Mineral.ALL[m].peakDepth;
+        }
+        for (int tries = 0; tries < 2000; tries++) {
+            int c = 1 + rnd.nextInt(COLS - 2), r = lo + rnd.nextInt(hi - lo + 1);
+            byte t = get(c, r);
+            if (t == AIR || t == BEDROCK || t == CONCRETE) continue;
+            if (t >= ORE && Mineral.isProtected(t - ORE)) continue;
+            if (m == Mineral.HEART) {
+                boolean near = false;
+                for (int dr = -2; dr <= 2; dr++)
+                    for (int dc = -2; dc <= 2; dc++)
+                        if (get(c + dc, r + dr) == ORE + Mineral.HEART) near = true;
+                if (near) continue;
+                for (int dr = -1; dr <= 1; dr++)
+                    for (int dc = -1; dc <= 1; dc++) {
+                        byte n = get(c + dc, r + dr);
+                        boolean keep = n >= ORE && Mineral.isProtected(n - ORE);
+                        if (!keep && n != AIR && n != BEDROCK && rnd.nextDouble() < 0.6) set(c + dc, r + dr, LAVA);
+                    }
+            }
+            set(c, r, (byte) (ORE + m));
+            return true;
+        }
+        return false;
+    }
+
     void generate(long seed) {
         this.seed = seed;
         Random rnd = new Random(seed);
@@ -141,6 +184,7 @@ final class World {
             set(c, r, (byte) (ORE + Mineral.HEART));
             hearts.add(new int[]{c, r});
         }
+        placeTreasures(rnd);
         // 出生点附近前几层保证是普通泥土,新手友好
         for (int r = SURFACE; r < SURFACE + 3; r++) {
             for (int c = Shop.START_DIG_COL - 2; c <= Shop.START_DIG_COL + 2; c++) {

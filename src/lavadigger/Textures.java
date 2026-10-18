@@ -212,6 +212,18 @@ final class Textures {
             case Mineral.STARCORE:
                 starcore(g, 16, 16, 9, mi.color, rnd);
                 break;
+            case Mineral.POT:
+                pot(g, 15 + rnd.nextInt(3), 17, mi.color, rnd);
+                break;
+            case Mineral.SKELETON:
+                skeleton(g, mi.color, rnd);
+                break;
+            case Mineral.IDOL:
+                idol(g, 16, 17, mi.color);
+                break;
+            case Mineral.ALIEN:
+                alien(g, 16, 16, mi.color, rnd);
+                break;
             default:
                 // 切割宝石:两颗大的,有时再加一颗小的
                 gem(g, pos.get(0)[0], pos.get(0)[1], 6.5, mi.color, m);
@@ -220,6 +232,146 @@ final class Textures {
         }
         g.dispose();
         return im;
+    }
+
+    /** 古钱罐:陶罐,罐口和旁边散落几枚金币 */
+    private static void pot(Graphics2D g, double cx, double cy, Color c, Random rnd) {
+        Path2D.Double body = new Path2D.Double();
+        body.moveTo(cx - 4, cy - 9);
+        body.curveTo(cx - 11, cy - 4, cx - 11, cy + 9, cx - 5, cy + 11);
+        body.lineTo(cx + 5, cy + 11);
+        body.curveTo(cx + 11, cy + 9, cx + 11, cy - 4, cx + 4, cy - 9);
+        body.closePath();
+        g.setColor(new Color(0, 0, 0, 90));
+        g.translate(1, 1.2);
+        g.fill(body);
+        g.translate(-1, -1.2);
+        g.setPaint(new GradientPaint((float) (cx - 9), 0, lighten(c, 40), (float) (cx + 9), 0, mul(c, 0.55)));
+        g.fill(body);
+        g.setColor(mul(c, 0.45));
+        g.setStroke(new BasicStroke(0.8f));
+        g.draw(body);
+        g.draw(new Line2D.Double(cx - 8.5, cy + 1, cx + 8.5, cy + 1));
+        g.setColor(mul(c, 0.7));
+        g.fill(new RoundRectangle2D.Double(cx - 5.5, cy - 11, 11, 3, 2, 2));
+        // 金币
+        Color gold = new Color(255, 205, 50);
+        double[][] coins = {{cx - 2, cy - 11.5}, {cx + 2.5, cy - 12}, {cx + 9, cy + 9}, {cx - 10, cy + 10}};
+        for (double[] k : coins) {
+            g.setColor(mul(gold, 0.6));
+            g.fill(new Ellipse2D.Double(k[0] - 2.4, k[1] - 1.3, 4.8, 2.9));
+            g.setColor(gold);
+            g.fill(new Ellipse2D.Double(k[0] - 2.4, k[1] - 1.8, 4.8, 2.6));
+            g.setColor(new Color(255, 250, 200));
+            g.fill(new Rectangle2D.Double(k[0] - 1, k[1] - 1.4, 1.2, 0.9));
+        }
+        g.setStroke(new BasicStroke(1f));
+    }
+
+    /** 恐龙骨架:头骨 + 一串脊椎 + 肋骨 */
+    private static void skeleton(Graphics2D g, Color c, Random rnd) {
+        g.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        Color sh = new Color(0, 0, 0, 80);
+        for (int pass = 0; pass < 2; pass++) {
+            double o = pass == 0 ? 0.9 : 0;
+            g.setColor(pass == 0 ? sh : c);
+            // 脊椎
+            for (int i = 0; i < 6; i++) {
+                double x = 10 + i * 3.4 + o, y = 13 + Math.sin(i * 0.7) * 1.5 + o;
+                g.fill(new Ellipse2D.Double(x - 1.6, y - 1.6, 3.2, 3.2));
+                if (i > 0 && i < 5) g.draw(new Line2D.Double(x, y + 1.5, x - 1 + (i % 2), y + 7));
+            }
+            // 尾巴
+            g.draw(new QuadCurve2D.Double(29 + o, 14 + o, 31 + o, 20 + o, 28 + o, 25 + o));
+            // 头骨
+            Path2D.Double sk = new Path2D.Double();
+            sk.moveTo(2 + o, 12 + o);
+            sk.curveTo(2 + o, 6 + o, 8 + o, 6 + o, 9.5 + o, 10 + o);
+            sk.lineTo(9 + o, 15 + o);
+            sk.lineTo(2 + o, 15 + o);
+            sk.closePath();
+            g.fill(sk);
+            // 腿骨
+            g.draw(new Line2D.Double(12 + o, 15 + o, 11 + o, 26 + o));
+            g.draw(new Line2D.Double(25 + o, 15 + o, 26 + o, 26 + o));
+        }
+        g.setColor(mul(c, 0.35));
+        g.fill(new Ellipse2D.Double(5, 9, 2.2, 2.2));
+        g.setStroke(new BasicStroke(0.7f));
+        for (int i = 0; i < 3; i++) g.draw(new Line2D.Double(3 + i * 2, 15, 3 + i * 2, 13.5));
+        g.setStroke(new BasicStroke(1f));
+    }
+
+    /** 远古神像:金色小雕像,头上有冠 */
+    private static void idol(Graphics2D g, double cx, double cy, Color c) {
+        Path2D.Double fig = new Path2D.Double();
+        fig.moveTo(cx - 3.5, cy - 7);
+        fig.lineTo(cx - 5, cy - 12);
+        fig.lineTo(cx - 2, cy - 10);
+        fig.lineTo(cx, cy - 14);
+        fig.lineTo(cx + 2, cy - 10);
+        fig.lineTo(cx + 5, cy - 12);
+        fig.lineTo(cx + 3.5, cy - 7);
+        fig.lineTo(cx + 4.5, cy - 3);
+        fig.lineTo(cx + 8, cy);
+        fig.lineTo(cx + 5, cy + 1);
+        fig.lineTo(cx + 6, cy + 10);
+        fig.lineTo(cx - 6, cy + 10);
+        fig.lineTo(cx - 5, cy + 1);
+        fig.lineTo(cx - 8, cy);
+        fig.lineTo(cx - 4.5, cy - 3);
+        fig.closePath();
+        g.setColor(new Color(0, 0, 0, 100));
+        g.translate(1, 1.2);
+        g.fill(fig);
+        g.translate(-1, -1.2);
+        g.setPaint(new GradientPaint((float) (cx - 6), (float) (cy - 12), lighten(c, 60), (float) (cx + 6), (float) (cy + 10), mul(c, 0.55)));
+        g.fill(fig);
+        g.setColor(mul(c, 0.4));
+        g.setStroke(new BasicStroke(0.7f));
+        g.draw(fig);
+        g.fill(new RoundRectangle2D.Double(cx - 8, cy + 9, 16, 3.5, 1.5, 1.5));
+        // 眼睛是两颗红宝石
+        g.setColor(new Color(230, 30, 60));
+        g.fill(new Ellipse2D.Double(cx - 2.6, cy - 6.5, 1.8, 1.8));
+        g.fill(new Ellipse2D.Double(cx + 0.8, cy - 6.5, 1.8, 1.8));
+        g.setColor(new Color(255, 255, 220, 200));
+        g.fill(new Rectangle2D.Double(cx - 3, cy - 2, 1.2, 6));
+        g.setStroke(new BasicStroke(1f));
+    }
+
+    /** 外星残骸:扭曲的金属碎片,嵌着发光的绿色晶体 */
+    private static void alien(Graphics2D g, double cx, double cy, Color c, Random rnd) {
+        Path2D.Double hull = new Path2D.Double();
+        hull.moveTo(cx - 11, cy + 2);
+        hull.lineTo(cx - 4, cy - 9);
+        hull.lineTo(cx + 9, cy - 7);
+        hull.lineTo(cx + 12, cy + 3);
+        hull.lineTo(cx + 3, cy + 10);
+        hull.lineTo(cx - 7, cy + 8);
+        hull.closePath();
+        g.setColor(new Color(0, 0, 0, 110));
+        g.translate(1, 1.2);
+        g.fill(hull);
+        g.translate(-1, -1.2);
+        g.setPaint(new GradientPaint((float) (cx - 10), (float) (cy - 8), new Color(200, 210, 225), (float) (cx + 10), (float) (cy + 9), new Color(70, 75, 95)));
+        g.fill(hull);
+        g.setColor(new Color(40, 45, 60));
+        g.setStroke(new BasicStroke(0.8f));
+        g.draw(hull);
+        g.draw(new Line2D.Double(cx - 4, cy - 9, cx - 1, cy + 9));
+        g.draw(new Line2D.Double(cx + 9, cy - 7, cx + 4, cy + 3));
+        // 发光晶体
+        for (int i = 0; i < 3; i++) {
+            double x = cx - 6 + i * 6, y = cy + (i == 1 ? -2 : 3);
+            g.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 90));
+            g.fill(new Ellipse2D.Double(x - 3.5, y - 3.5, 7, 7));
+            g.setColor(c);
+            g.fill(diamond(x, y, 2.2));
+            g.setColor(Color.WHITE);
+            g.fill(new Rectangle2D.Double(x - 0.5, y - 1.2, 1, 1));
+        }
+        g.setStroke(new BasicStroke(1f));
     }
 
     /** 岩盐:小立方体晶块(等轴测画法) */

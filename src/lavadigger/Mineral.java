@@ -6,10 +6,11 @@ import java.awt.Color;
 final class Mineral {
     // 贴图样式
     static final int COAL = 0, NUGGET = 1, GEM = 2, CRYSTAL = 3, AMBER = 4, FOSSIL = 5, OPAL = 6, METEOR = 7, HEART_STYLE = 8,
-        CUBE = 9, BANDED = 10, MATRIX = 11, MOON = 12, STARCORE = 13;
+        CUBE = 9, BANDED = 10, MATRIX = 11, MOON = 12, STARCORE = 13,
+        POT = 14, SKELETON = 15, IDOL = 16, ALIEN = 17;
     // 动态特效(画在黑暗遮罩之后)
     static final int FX_NONE = 0, FX_OPAL = 1, FX_METEOR = 2, FX_AMBER = 3, FX_HEART = 4, FX_FUMES = 5, FX_SHEEN = 6,
-        FX_MOON = 7, FX_LIGHTNING = 8, FX_FLAME = 9, FX_PINK = 10, FX_SWIRL = 11;
+        FX_MOON = 7, FX_LIGHTNING = 8, FX_FLAME = 9, FX_PINK = 10, FX_SWIRL = 11, FX_TREASURE = 12, FX_ALIEN = 13;
 
     final String name;
     final int value;
@@ -36,6 +37,8 @@ final class Mineral {
     static final int HEART = 8;
     /** 第 2 版、第 3 版新增的矿分别从这两个编号开始(老存档读档时会补进地图) */
     static final int FIRST_V2 = 9, FIRST_V3 = 18;
+    /** 第 4 版:宝藏(全图数量固定,单独摆放,不参与随机生成) */
+    static final int FIRST_V4 = 28, TREASURES = 4;
 
     /** 注意:编号就是存档里的格子编码,只能往后追加,不能插队或改顺序 */
     static final Mineral[] ALL = {
@@ -69,7 +72,30 @@ final class Mineral {
         new Mineral("火焰晶", 3200, new Color(255, 90, 40), 200, 290, 65, 0.4, CRYSTAL, FX_FLAME),
         new Mineral("粉钻", 5000, new Color(255, 140, 200), 240, 330, 70, 0.35, GEM, FX_PINK),
         new Mineral("星核", 12000, new Color(120, 60, 200), 320, 395, 35, 0.25, STARCORE, FX_SWIRL),
+        // ---- 第 4 版:宝藏。minDepth~peakDepth 是摆放的深度范围(格),weight 为 0 ----
+        new Mineral("古钱罐", 800, new Color(190, 120, 70), 17, 50, 0, 0, POT, FX_TREASURE),
+        new Mineral("恐龙骨架", 5000, new Color(235, 225, 200), 100, 200, 0, 0, SKELETON, FX_TREASURE),
+        new Mineral("远古神像", 12000, new Color(225, 180, 60), 200, 300, 0, 0, IDOL, FX_TREASURE),
+        new Mineral("外星残骸", 25000, new Color(110, 255, 170), 300, 383, 0, 0, ALIEN, FX_ALIEN),
     };
+
+    /** 各宝藏全图数量,和挖到时的说明 */
+    static final int[] TREASURE_COUNT = {4, 3, 2, 2};
+    static final String[] TREASURE_TEXT = {
+        "不知哪个年代的人埋下的积蓄",
+        "博物馆会抢着要",
+        "上面刻着看不懂的文字",
+        "这东西……不像是地球上的",
+    };
+
+    static boolean isTreasure(int m) {
+        return m >= FIRST_V4 && m < FIRST_V4 + TREASURES;
+    }
+
+    /** 熔岩之心和宝藏:炸药炸不掉,爆炸丢失后会放回地底 */
+    static boolean isProtected(int m) {
+        return m == HEART || isTreasure(m);
+    }
 
     /** 按价格从低到高的编号顺序(用于价目表、收购清单) */
     static final int[] BY_VALUE = byValue();
@@ -99,7 +125,7 @@ final class Mineral {
         double sum = 0;
         for (int i = from; i < ALL.length; i++) {
             Mineral m = ALL[i];
-            if (i == HEART) continue; // 熔岩之心是单独摆放的稀有宝物
+            if (i == HEART || m.weight <= 0) continue; // 熔岩之心和宝藏是单独摆放的
             if (depth < m.minDepth) continue;
             double z = (depth - m.peakDepth) / (double) m.spread;
             w[i] = m.weight * Math.exp(-z * z);

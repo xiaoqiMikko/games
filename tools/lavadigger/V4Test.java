@@ -20,6 +20,7 @@ public final class V4Test {
         gp.newGame(42);
 
         task1(gp);
+        task3(gp);
 
         System.out.println(SelfTest.fails == 0 ? "V4 全部通过" : ("V4 失败 " + SelfTest.fails + " 项"));
         System.exit(SelfTest.fails == 0 ? 0 : 1);
@@ -112,5 +113,71 @@ public final class V4Test {
         shot(gp, "v4-02-upgrade-shop");
         gp.closeShop();
         p.items[0] = p.items[1] = 0;
+    }
+
+    static int countTile(World w, int m) {
+        int n = 0;
+        for (byte t : w.tiles) if (t == World.ORE + m) n++;
+        return n;
+    }
+
+    static void task3(GamePanel gp) throws Exception {
+        String[] names = {"古钱罐", "恐龙骨架", "远古神像", "外星残骸"};
+        int[] values = {800, 5000, 12000, 25000}, counts = {4, 3, 2, 2};
+        int[][] meters = {{50, 150}, {300, 600}, {600, 900}, {900, 1150}};
+        World w = new World();
+        w.generate(7);
+        for (int k = 0; k < 4; k++) {
+            int m = Mineral.FIRST_V4 + k;
+            Mineral mi = Mineral.ALL[m];
+            check(mi.name.equals(names[k]) && mi.value == values[k] && Mineral.isTreasure(m), "宝藏定义:" + names[k]);
+            check(countTile(w, m) == counts[k], names[k] + " 全图 " + counts[k] + " 个,实际 " + countTile(w, m));
+            boolean inBand = true;
+            for (int i = 0; i < w.tiles.length; i++) {
+                if (w.tiles[i] != World.ORE + m) continue;
+                int d = i / World.COLS - World.SURFACE;
+                if (d * 3 < meters[k][0] || d * 3 > meters[k][1]) inBand = false;
+            }
+            check(inBand, names[k] + " 在 " + meters[k][0] + "~" + meters[k][1] + " 米");
+        }
+        check(Mineral.ALL.length == Mineral.FIRST_V4 + 4, "宝藏排在矿物表末尾");
+        java.util.Random rnd = new java.util.Random(1);
+        boolean never = true;
+        for (int i = 0; i < 40000; i++) {
+            int m = Mineral.pick(rnd.nextInt(410), rnd);
+            if (m >= 0 && (Mineral.isTreasure(m) || m == Mineral.HEART)) never = false;
+        }
+        check(never, "随机生成从不产出宝藏");
+
+        // 挖到宝藏:进货舱 + 屏幕中间的说明
+        gp.respawn();
+        Player p = gp.p;
+        int c = 20, r = World.SURFACE + 40;
+        for (int rr = r - 1; rr <= r; rr++) { gp.world.set(c, rr, World.AIR); gp.world.set(c + 1, rr, World.DIRT); }
+        gp.world.set(c, r + 1, World.ROCK);
+        gp.world.set(c + 1, r, (byte) (World.ORE + Mineral.FIRST_V4 + 1));
+        p.x = c * T + 3;
+        p.y = r * T + T - Player.H;
+        p.fallStartY = p.y;
+        p.fuel = p.maxFuel();
+        SelfTest.hold(gp, KeyEvent.VK_RIGHT, 2.5);
+        check(p.cargo[Mineral.FIRST_V4 + 1] == 1, "挖到恐龙骨架进货舱");
+        check(gp.centerMsgTimer > 0 && gp.centerMsg.contains("恐龙骨架"), "挖到宝藏有居中说明");
+        shot(gp, "v4-03-treasure-found");
+        java.util.Arrays.fill(p.cargo, 0);
+        gp.respawn();
+
+        // 宝藏放大图
+        java.awt.image.BufferedImage atlas = new java.awt.image.BufferedImage(640, 220, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = atlas.createGraphics();
+        for (int k = 0; k < 4; k++) {
+            int m = Mineral.FIRST_V4 + k;
+            g.drawImage(gp.tex.ore[Textures.band(World.SURFACE + Mineral.ALL[m].peakDepth)][m][0], 20 + k * 155, 20, 128, 128, null);
+            g.setColor(java.awt.Color.WHITE);
+            g.setFont(new java.awt.Font(gp.fontName, java.awt.Font.BOLD, 16));
+            g.drawString(Mineral.ALL[m].name, 20 + k * 155, 180);
+        }
+        g.dispose();
+        javax.imageio.ImageIO.write(atlas, "png", new File(SelfTest.out, "v4-04-treasure-atlas.png"));
     }
 }
