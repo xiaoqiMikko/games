@@ -4,12 +4,64 @@ import java.io.*;
 import java.util.Base64;
 import java.util.Properties;
 
-/** 存档:保存在 用户目录/.lava-digger/save.properties */
+/**
+ * 存档:放在 jar 所在文件夹的「存档/熔岩矿车存档.properties」,跟着游戏文件夹走。
+ * 游戏文件夹不可写时退回到 用户目录/.lava-digger/。
+ * 老版本的存档(用户目录/.lava-digger/save.properties)会在启动时自动搬过来。
+ */
 final class SaveManager {
     static boolean enabled = true;
+    static File dirOverride;          // 测试用
+
+    static final String DIR_NAME = "存档";
+    static final String FILE_NAME = "熔岩矿车存档.properties";
+
+    private static File cached;
+
+    static File legacyFile() {
+        return new File(System.getProperty("user.home"), ".lava-digger" + File.separator + "save.properties");
+    }
+
+    /** jar 所在的文件夹;取不到时返回 null */
+    static File gameDir() {
+        try {
+            File loc = new File(SaveManager.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+            return loc.isFile() ? loc.getParentFile() : loc;
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
     static File file() {
-        return new File(System.getProperty("user.home"), ".lava-digger" + File.separator + "save.properties");
+        if (dirOverride != null) return new File(dirOverride, FILE_NAME);
+        if (cached != null) return cached;
+        File dir = gameDir();
+        File f = null;
+        if (dir != null) {
+            File d = new File(dir, DIR_NAME);
+            if ((d.isDirectory() || d.mkdirs()) && d.canWrite()) f = new File(d, FILE_NAME);
+        }
+        if (f == null) f = new File(legacyFile().getParentFile(), FILE_NAME);   // 兜底
+        cached = f;
+        return f;
+    }
+
+    /** 把老位置的存档搬到新位置(新位置已有存档时不动) */
+    static void migrateLegacy() {
+        if (!enabled) return;
+        File old = legacyFile(), now = file();
+        if (!old.isFile() || now.isFile() || old.equals(now)) return;
+        try {
+            now.getParentFile().mkdirs();
+            java.nio.file.Files.copy(old.toPath(), now.toPath());
+            if (old.delete()) {
+                File oldDir = old.getParentFile();
+                String[] rest = oldDir.list();
+                if (rest != null && rest.length == 0) oldDir.delete();
+            }
+        } catch (IOException e) {
+            System.err.println("搬运旧存档失败: " + e);
+        }
     }
 
     static boolean exists() {

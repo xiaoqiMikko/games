@@ -39,7 +39,7 @@ java -cp "$S/testcls" lavadigger.SelfTest "$S/shots"     # 退出码 0 = 全部�
 - **`Shop`**:四家商店的列位置决定了地表哪几格是水泥(`World.generate` 用 `isUnderShop`),以及进店判定(`Shop.at`)。挪动商店位置会同时影响这两处。
 - **`Art`**:商店和矿车用 Java2D 矢量绘制(每帧绘制,带动画),`GamePanel.drawShop` 和 `drawVehicle` 只负责转调。
 - **`Textures`**:全部贴图在启动时用代码生成,没有图片资源;土层颜色按深度分 5 档(`band()`)。**`Sfx`** 用代码合成 PCM 音效,声卡不可用时静默。
-- **`SaveManager`**:存到 `~/.lava-digger/save.properties`,整张地图用 Base64 保存。离开商店、暂停菜单、重生、关窗口时自动存。给 `Player` 新增需要持久化的字段时,要同时改 `save` 和 `load`。
+- **`SaveManager`**:存到 jar 所在文件夹的 `存档/熔岩矿车存档.properties`(该文件夹已 gitignore;不可写时退回 `~/.lava-digger/`),整张地图用 Base64 保存。启动时会把旧位置 `~/.lava-digger/save.properties` 自动搬过来。自测通过 `SaveManager.dirOverride` 和改写 `user.home` 隔离,不会碰真实存档。离开商店、暂停菜单、重生、关窗口时自动存。给 `Player` 新增需要持久化的字段时,要同时改 `save` 和 `load`。
 
 ## 约定
 

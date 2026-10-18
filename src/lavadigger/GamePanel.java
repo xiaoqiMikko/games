@@ -73,6 +73,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
             }
         }
         fontName = name;
+        SaveManager.migrateLegacy();
         hasSave = SaveManager.exists();
         if (!(hasSave && SaveManager.load(world, p))) {
             hasSave = false;

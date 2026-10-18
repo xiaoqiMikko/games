@@ -387,6 +387,27 @@ public final class SelfTest {
         SaveManager.enabled = true;
         String home = System.getProperty("user.home");
         System.setProperty("user.home", new File(out, "home").getAbsolutePath());
+        // 默认位置:程序所在文件夹/存档/熔岩矿车存档.properties
+        File def = SaveManager.file();
+        System.out.println("默认存档位置: " + def.getAbsolutePath());
+        check(def.getName().equals("熔岩矿车存档.properties") && def.getParentFile().getName().equals("存档")
+            && def.getParentFile().getParentFile().equals(SaveManager.gameDir()), "存档默认放在游戏文件夹/存档/");
+        File saveDir = new File(out, "save");
+        SaveManager.dirOverride = saveDir;
+        File nf = SaveManager.file();
+        nf.delete();
+        gp.p.money = 777;
+        SaveManager.save(gp.world, gp.p);
+        // 老位置的存档会被搬过来
+        File legacy = SaveManager.legacyFile();
+        legacy.getParentFile().mkdirs();
+        java.nio.file.Files.copy(nf.toPath(), legacy.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        nf.delete();
+        SaveManager.migrateLegacy();
+        check(nf.isFile() && !legacy.exists() && !legacy.getParentFile().exists(), "旧存档自动搬到新位置并清理旧文件夹");
+        World wm = new World();
+        Player pm = new Player();
+        check(SaveManager.load(wm, pm) && pm.money == 777, "搬过来的存档能读");
         gp.p.money = 12345;
         gp.p.level[Upgrades.DRILL] = 3;
         SaveManager.save(gp.world, gp.p);
@@ -396,6 +417,7 @@ public final class SelfTest {
         check(p2.fallStartY == p2.y, "读档后下落起点重置为当前位置");
         check(p2.money == 12345 && p2.level[Upgrades.DRILL] == 3 && java.util.Arrays.equals(w2.tiles, gp.world.tiles), "存档内容一致");
         System.setProperty("user.home", home);
+        SaveManager.dirOverride = null;
 
         // 地图统计
         int[] count = new int[Mineral.ALL.length];
