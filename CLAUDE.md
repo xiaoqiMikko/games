@@ -22,6 +22,7 @@ javac -encoding UTF-8 -nowarn -d "$S/testcls" src/lavadigger/*.java tools/lavadi
 java -cp "$S/testcls" lavadigger.SelfTest "$S/shots"     # 退出码 0 = 全部通过
 ```
 
+- 游戏开着时 jar 文件被占用,`build.bat` 会在最后一步报 `FileSystemException ... LavaDigger.jar` 并 BUILD FAILED。这时要让用户先关掉游戏,不要擅自结束 java 进程(用户可能正在玩)。
 - 自测没有测试框架,`SelfTest.main` 按顺序跑全部场景;要只测一项就临时注释掉其他段落。它会关闭存档和音效(`SaveManager.enabled` / `Sfx.enabled`),存读档测试会临时改写 `user.home`。
 - 控制台是 GBK,自测输出的中文会乱码:看 `[OK]`/`[FAIL]` 和退出码,或在 java 后加 `-Dstdout.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8`。
 - 改了画面相关代码,跑完自测要看 `shots/*.png` 确认(例如字体不支持的符号会显示成方框,菜单箭头因此改为手画三角形)。
