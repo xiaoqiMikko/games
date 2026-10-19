@@ -31,6 +31,7 @@ public final class V4Test {
         alarmMargin(gp);
         textOverMinimap(gp);
         gasRework(gp);
+        windowIcon();
 
         System.out.println(SelfTest.fails == 0 ? "V4 全部通过" : ("V4 失败 " + SelfTest.fails + " 项"));
         System.exit(SelfTest.fails == 0 ? 0 : 1);
@@ -705,5 +706,34 @@ public final class V4Test {
         gp.render(g);
         g.dispose();
         return img;
+    }
+
+    /** 窗口和任务栏用自己的图标,不用 Java 咖啡杯 */
+    static void windowIcon() throws Exception {
+        java.util.List<java.awt.image.BufferedImage> icons = Art.icons();
+        int[] sizes = {16, 20, 24, 32, 40, 48, 64, 128, 256};
+        boolean ok = icons.size() == sizes.length;
+        for (int i = 0; ok && i < sizes.length; i++) ok = icons.get(i).getWidth() == sizes[i] && icons.get(i).getHeight() == sizes[i];
+        check(ok, "图标有 16~256 各种尺寸");
+        java.awt.image.BufferedImage big = icons.get(icons.size() - 1);
+        int opaque = 0, orange = 0;
+        for (int y = 0; y < 256; y++)
+            for (int x = 0; x < 256; x++) {
+                int argb = big.getRGB(x, y), a = argb >>> 24, r = (argb >> 16) & 255, g = (argb >> 8) & 255, b = argb & 255;
+                if (a > 200) opaque++;
+                if (a > 200 && r > 200 && g > 100 && g < 200 && b < 80) orange++;
+            }
+        check(opaque > 256 * 256 / 2 && orange > 500, "图标画出来了(不透明 " + opaque + ",橙色 " + orange + ")");
+        java.awt.image.BufferedImage sheet = new java.awt.image.BufferedImage(720, 270, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = sheet.createGraphics();
+        g.setColor(new java.awt.Color(235, 235, 235));
+        g.fillRect(0, 0, 720, 270);
+        int x = 4;
+        for (java.awt.image.BufferedImage im : icons) {
+            if (im.getWidth() < 256) { g.drawImage(im, x, 4, null); x += im.getWidth() + 6; }
+        }
+        g.drawImage(big, 450, 8, null);
+        g.dispose();
+        javax.imageio.ImageIO.write(sheet, "png", new File(SelfTest.out, "v4-14-icon.png"));
     }
 }

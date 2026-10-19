@@ -582,4 +582,49 @@ final class Art {
         if (down) g.fill(new Ellipse2D.Double(-1, 22.5, 2, 2));
         else g.fill(new Ellipse2D.Double(22, -0.5, 2, 2));
     }
+
+    /** 窗口/任务栏图标:圆角方块里一辆矿车,底下是熔岩。按 64×64 画,再缩放到各尺寸 */
+    static java.util.List<java.awt.image.BufferedImage> icons() {
+        java.util.List<java.awt.image.BufferedImage> list = new java.util.ArrayList<>();
+        for (int size : new int[]{16, 20, 24, 32, 40, 48, 64, 128, 256}) list.add(icon(size));
+        return list;
+    }
+
+    static java.awt.image.BufferedImage icon(int size) {
+        java.awt.image.BufferedImage im = new java.awt.image.BufferedImage(size, size, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = im.createGraphics();
+        aa(g, true);
+        g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        g.scale(size / 64.0, size / 64.0);
+        Shape box = new RoundRectangle2D.Double(1, 1, 62, 62, 16, 16);
+        g.setPaint(new GradientPaint(0, 0, new Color(92, 58, 38), 0, 64, new Color(40, 20, 14)));
+        g.fill(box);
+        Shape oc = g.getClip();
+        g.clip(box);
+        // 熔岩:波浪形的亮橙色带
+        Path2D lava = new Path2D.Double();
+        lava.moveTo(0, 50);
+        for (int x = 0; x <= 64; x += 4) lava.lineTo(x, 49 + Math.sin(x * 0.35) * 2.2);
+        lava.lineTo(64, 64);
+        lava.lineTo(0, 64);
+        lava.closePath();
+        g.setPaint(new GradientPaint(0, 46, new Color(255, 190, 60), 0, 64, new Color(225, 70, 20)));
+        g.fill(lava);
+        g.setColor(new Color(255, 235, 140));
+        g.fill(new Ellipse2D.Double(12, 54, 5, 3));
+        g.fill(new Ellipse2D.Double(42, 57, 6, 3));
+        g.setClip(oc);
+        // 矿车放大 1.38 倍,钻头朝下
+        AffineTransform t = g.getTransform();
+        g.translate(32, 27);
+        g.scale(1.38, 1.38);
+        vehicle(g, 0, 0, 1, true, false, false, 0, 0, new Random(1), false);
+        g.setTransform(t);
+        g.setColor(new Color(0, 0, 0, 90));
+        g.setStroke(new BasicStroke(1.5f));
+        g.draw(box);
+        g.dispose();
+        return im;
+    }
 }

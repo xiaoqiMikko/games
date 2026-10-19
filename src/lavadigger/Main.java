@@ -16,6 +16,7 @@ public final class Main {
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
             JFrame f = new JFrame("熔岩矿车");
+            f.setIconImages(Art.icons()); // 标题栏和任务栏用自己的图标,不显示 Java 咖啡杯
             GamePanel gp = new GamePanel();
             f.setContentPane(gp);
             f.pack();
