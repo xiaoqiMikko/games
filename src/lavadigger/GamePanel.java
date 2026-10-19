@@ -45,7 +45,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         "燃油报警了!现在就按住 ↑ 往上飞,回地面加油",
         "货舱满了,再挖到的矿会丢掉。回地面去矿石收购站卖钱吧",
         "橙红色的是熔岩,钻进去会被烧伤。绕开它,或者升级散热器",
-        "刚才是瓦斯!它看起来像泥土,细看有淡绿色斑点。探测器能提前标出来",
+        "刚才是瓦斯!它看起来像泥土,但偶尔会冒个小气泡。探测器能提前标出来",
         "卖了钱去改装厂升级,油箱和钻头最要紧",
         "进入地热区:越往下车温越高,干什么都更费油。深度旁边显示车温,升级散热器能降下来",
         "地震了!头顶掉灰就是碎石要落下来,赶紧挪开",
@@ -655,9 +655,44 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 }
             spawnExplosion(cx, cy, 60);
             sfx.boom();
-            damage(6 + (r - World.SURFACE) / 30.0, "瓦斯爆炸");
+            damage(gasDamage(r - World.SURFACE), "瓦斯爆炸");
             tip(TIP_GAS);
         }
+    }
+
+    /** 瓦斯爆炸伤害(深度格数) */
+    static double gasDamage(double rows) {
+        return 6 + rows / 30.0;
+    }
+
+    /** 瓦斯格偶尔冒一个小气泡:每格 6~10 秒冒一次、持续 0.8 秒,各格错开。返回气泡进度 0~1,不在冒泡时返回 -1 */
+    static double gasBubble(int c, int r, double t) {
+        int h = Textures.hash(c * 31 + 5, r * 17 + 9);
+        double period = 6 + (h % 1000) / 1000.0 * 4, offset = ((h / 1000) % 1000) / 1000.0 * period;
+        double ph = (t + offset) % period;
+        return ph < 0.8 ? ph / 0.8 : -1;
+    }
+
+    /** 画在黑暗遮罩之前:只有车灯照得到的地方才看得见,远处还得靠探测器 */
+    void drawGasBubbles(Graphics2D g, int ox, int oy) {
+        int c0 = Math.max(0, ox / T), c1 = Math.min(World.COLS - 1, (ox + VW) / T);
+        int r0 = Math.max(World.SURFACE, oy / T), r1 = Math.min(World.ROWS - 1, (oy + VH) / T);
+        Art.aa(g, true);
+        for (int r = r0; r <= r1; r++)
+            for (int c = c0; c <= c1; c++) {
+                if (world.get(c, r) != World.GAS) continue;
+                double b = gasBubble(c, r, time);
+                if (b < 0) continue;
+                int h = Textures.hash(c * 7 + 1, r * 5 + 3);
+                double bx = c * T - ox + 10 + (h % 12) + Math.sin(b * 9) * 1.5;
+                double by = r * T - oy + 26 - b * 20;
+                double rad = 2 + b * 1.8;
+                int a = (int) (230 * (b < 0.8 ? 1 : (1 - b) / 0.2));
+                g.setColor(new Color(170, 255, 150, a / 2));
+                g.fill(new Ellipse2D.Double(bx - rad, by - rad, rad * 2, rad * 2));
+                g.setColor(new Color(220, 255, 210, a));
+                g.draw(new Ellipse2D.Double(bx - rad, by - rad, rad * 2, rad * 2));
+            }
     }
 
     void damage(double dmg, String reason) {
@@ -1180,6 +1215,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         drawTiles(g, ox, oy);
         if (!(state == State.EXPLODING && explodeTimer > 0.1) && state != State.REPORT) drawVehicle(g, p.x - ox, p.y - oy);
         drawParticles(g, ox, oy);
+        drawGasBubbles(g, ox, oy);
         drawDarkness(g, ox, oy);
         drawOreEffects(g, ox, oy);
         drawProbe(g, ox, oy);
@@ -1955,7 +1991,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                     "钻不动:绕开、用炸药炸,或把钻头升到钻石级",
                     "#熔岩(橙红色)",
                     "钻进去会被烧伤,越深伤害越高;「散热器」可以减伤",
-                    "#瓦斯(像普通泥土,细看有淡绿色斑点)",
+                    "#瓦斯(像普通泥土,偶尔冒个小气泡)",
                     "一挖就爆炸,扣车身并炸开周围的土;「探测器」能提前标出来",
                     "#摔落",
                     "掉落超过 4 格会摔伤(10 格扣 1.5、20 格扣 4);快落地时按 ↑ 刹车能减轻",

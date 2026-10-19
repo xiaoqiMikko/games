@@ -30,6 +30,7 @@ public final class V4Test {
         minimapEdge(gp);
         alarmMargin(gp);
         textOverMinimap(gp);
+        gasRework(gp);
 
         System.out.println(SelfTest.fails == 0 ? "V4 全部通过" : ("V4 失败 " + SelfTest.fails + " 项"));
         System.exit(SelfTest.fails == 0 ? 0 : 1);
@@ -625,5 +626,61 @@ public final class V4Test {
         check(hits > 5, "飘字画在小地图前面(小地图区域里看得到飘字 " + hits + " 个像素)");
         gp.texts.clear();
         gp.respawn();
+    }
+
+    /** 瓦斯:扣血走 gasDamage;偶尔冒小气泡 */
+    static void gasRework(GamePanel gp) throws Exception {
+        // 实际挖到瓦斯扣的就是这个数
+        Player p = gp.p;
+        setAll(p, 2);
+        int[] cr = room(gp, 100);
+        gp.world.set(cr[0], cr[1] + 1, World.GAS);
+        p.hull = p.maxHull();
+        double h0 = p.hull;
+        gp.tryDigDown();
+        run(gp, 3);
+        check(Math.abs(h0 - p.hull - GamePanel.gasDamage(101)) < 1e-6, "挖到瓦斯扣血 = gasDamage(深度):" + (h0 - p.hull));
+
+        // 气泡:偶尔冒,不是一直冒
+        int on = 0, n = 0;
+        double lastOn = 0, maxGap = 0;
+        for (double t = 0; t < 120; t += 0.05, n++) {
+            if (GamePanel.gasBubble(20, 150, t) >= 0) { on++; maxGap = Math.max(maxGap, t - lastOn); lastOn = t; }
+        }
+        double frac = on / (double) n;
+        System.out.printf("  气泡出现时间占比 %.1f%%, 最长间隔 %.1f 秒%n", frac * 100, maxGap);
+        check(frac > 0.04 && frac < 0.2, "气泡是偶尔冒(出现时间占 4%~20%)");
+        check(maxGap < 15, "最多等 15 秒能看到一次气泡");
+        boolean diff = false;
+        for (double t = 0; t < 30; t += 0.3) diff |= (GamePanel.gasBubble(20, 150, t) >= 0) != (GamePanel.gasBubble(21, 150, t) >= 0);
+        check(diff, "相邻两格瓦斯不同步冒泡");
+
+        // 画面:车旁边一格瓦斯,冒泡时和不冒泡时看起来不一样
+        setAll(p, 0);
+        cr = room(gp, 100);
+        int gc = cr[0] + 1, gr = cr[1];
+        gp.world.set(gc, gr, World.GAS);
+        double tOn = -1, tOff = -1;
+        for (double t = 0; t < 30 && (tOn < 0 || tOff < 0); t += 0.01) {
+            double b = GamePanel.gasBubble(gc, gr, t);
+            if (b > 0.4 && b < 0.6 && tOn < 0) tOn = t;
+            if (b < 0 && tOff < 0) tOff = t;
+        }
+        java.awt.image.BufferedImage a = frame(gp, tOn), b = frame(gp, tOff);
+        int x0 = gc * World.T - (int) Math.round(gp.camX), y0 = gr * World.T - (int) Math.round(gp.camY), px = 0;
+        for (int y = y0; y < y0 + World.T; y++) for (int x = x0; x < x0 + World.T; x++) if (a.getRGB(x, y) != b.getRGB(x, y)) px++;
+        check(px >= 6, "冒泡时瓦斯格上看得到气泡(" + px + " 个像素不同)");
+        gp.time = tOn;
+        shot(gp, "v4-13-gas-bubble");
+        gp.respawn();
+    }
+
+    static java.awt.image.BufferedImage frame(GamePanel gp, double t) {
+        gp.time = t;
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(GamePanel.VW, GamePanel.VH, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = img.createGraphics();
+        gp.render(g);
+        g.dispose();
+        return img;
     }
 }
