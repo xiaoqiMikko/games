@@ -6,6 +6,8 @@
 
 开着矿车往地下钻,挖矿、回地面卖钱、升级车子,再往更深的地方钻。越往下矿越值钱,但油耗越大、危险越多。地底最深处藏着 6 颗「熔岩之心」,全部挖出来卖掉就通关。
 
+> ⚠️ **运行环境:必须先安装 Java 8 或以上版本。** 游戏是一个 jar 文件,电脑上没有 Java 就打不开。检查和安装方法见下方「[怎么启动](#怎么启动)」。
+
 ![标题画面](screenshots/title.png)
 
 ## 特点
@@ -26,27 +28,35 @@
 
 ## 怎么启动
 
-### 1. 装好 Java
+### 1. 检查有没有 Java(必需)
 
-需要 **Java 8 或更高版本**。命令行输入下面这条,能看到版本号就说明装好了:
+需要 **Java 8 或更高版本**。Windows 按 `Win + R` 输入 `cmd` 回车,在命令行里输入:
 
 ```bash
 java -version
 ```
 
-没装的话去 [Adoptium](https://adoptium.net/) 下载一个 JDK 或 JRE 装上。
+- 能看到 `java version "1.8.0_xxx"`、`openjdk version "17.x"` 这类版本号 → 已装好,跳到第 3 步
+- 提示「'java' 不是内部或外部命令」→ 没装,看第 2 步
 
-### 2. 下载游戏
+### 2. 安装 Java(已装可跳过)
+
+去 [Adoptium](https://adoptium.net/) 下载 Temurin,版本选 17 或 21 都行(8 也能跑)。Windows 下载 `.msi`、macOS 下载 `.pkg`,一路下一步装完;Linux 用系统包管理器装 OpenJDK。
+装完**重新开一个**命令行窗口,再输一次 `java -version` 确认。
+
+### 3. 下载游戏
 
 从 [Releases](../../releases) 下载 `LavaDigger.jar`(仓库根目录里也有同一个文件)。
 
-### 3. 运行
+### 4. 运行
+
+在 jar 所在文件夹打开命令行:
 
 ```bash
 java -jar LavaDigger.jar
 ```
 
-Windows 上如果 `.jar` 已经关联了 Java,直接双击也能打开。
+Windows 上如果 `.jar` 已经关联了 Java,直接双击也能打开。**双击没反应、或者被解压软件当成压缩包打开**,说明没关联,用上面的命令行启动即可。
 
 存档会写在 jar 所在文件夹的 `save/lava.properties`,换电脑时把这个文件一起拷走就行。
 
