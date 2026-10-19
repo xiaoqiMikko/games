@@ -283,7 +283,7 @@ public final class SelfTest {
             check(dmg < 0.5, "刹车后基本不摔伤");
         }
         gp.respawn();
-        check(gp.p.cargoMax() == 10, "出厂货舱 10 格");
+        check(gp.p.cargoMax() == 15, "出厂货舱 15 格");
         // 修车价 $5/点
         gp.p.hull = gp.p.maxHull() - 4;
         gp.p.money = 1000;

@@ -62,12 +62,12 @@ public final class V4Test {
         check(gp.tempC(1) == 20, "地表 20℃");
 
         // 油箱
-        double[] tanks = {10, 15, 25, 40, 58, 78, 100};
+        double[] tanks = {10, 15, 25, 40, 60, 92, 115};
         boolean tankOk = true;
         for (int t = 0; t < 7; t++) tankOk &= Upgrades.VALUES[Upgrades.FUEL][t] == tanks[t];
-        check(tankOk, "油箱各档 10/15/25/40/58/78/100");
+        check(tankOk, "油箱各档 10/15/25/40/60/92/115");
         check(Upgrades.KINDS == 7 && Upgrades.PROBE == 6, "第 7 种部件:探测器");
-        check(Upgrades.PRICES[Upgrades.FUEL][6] == 410000 && Upgrades.PRICES[Upgrades.PROBE][1] == 550, "价格表按经济模拟校准后的值");
+        check(Upgrades.PRICES[Upgrades.FUEL][6] == 375000 && Upgrades.PRICES[Upgrades.PROBE][1] == 500, "价格表按经济模拟校准后的值");
 
         // 回程估算按地热累加:300 格深处比不算地热时要多
         setAll(p, 0);
@@ -473,7 +473,7 @@ public final class V4Test {
                 "老存档按最深纪录(360 米)标记已领的里程碑,不补发奖金");
             int want = (1 << GamePanel.TIP_DIG) | (1 << GamePanel.TIP_SELL) | (1 << GamePanel.TIP_HEAT) | (1 << GamePanel.TIP_QUAKE);
             check((p2.tips & want) == want, "老存档按进度标记已看过的指引");
-            check(p2.fuel <= p2.maxFuel() + 1e-9 && p2.maxFuel() == 100, "老存档油量截到新油箱上限");
+            check(p2.fuel <= p2.maxFuel() + 1e-9 && p2.maxFuel() == 115, "老存档油量截到新油箱上限");
 
             // 第 4 版存档往返
             p2.milestones = 0b10101;
