@@ -45,7 +45,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         "燃油报警了!现在就按住 ↑ 往上飞,回地面加油",
         "货舱满了,再挖到的矿会丢掉。回地面去矿石收购站卖钱吧",
         "橙红色的是熔岩,钻进去会被烧伤。绕开它,或者升级散热器",
-        "刚才是瓦斯!它看起来像泥土,但偶尔会冒个小气泡。探测器能提前标出来",
+        "刚才是瓦斯!它看起来像泥土,但偶尔会冒个小气泡。越深炸得越狠,探测器能提前标出来",
         "卖了钱去改装厂升级,油箱和钻头最要紧",
         "进入地热区:越往下车温越高,干什么都更费油。深度旁边显示车温,升级散热器能降下来",
         "地震了!头顶掉灰就是碎石要落下来,赶紧挪开",
@@ -377,7 +377,7 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
             quakeTimer -= dt;
             if (quakeTimer <= 0) triggerQuake();
         }
-        double dmg = 2 + Math.max(0, p.depthRows()) / 80.0;
+        double dmg = (2 + Math.max(0, p.depthRows()) / 80.0) * (1 - p.armor());
         for (int i = rocks.size() - 1; i >= 0; i--) {
             Rock k = rocks.get(i);
             if (k.warn > 0) {
@@ -655,14 +655,14 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                 }
             spawnExplosion(cx, cy, 60);
             sfx.boom();
-            damage(gasDamage(r - World.SURFACE), "瓦斯爆炸");
+            damage(gasDamage(r - World.SURFACE) * (1 - p.armor()), "瓦斯爆炸");
             tip(TIP_GAS);
         }
     }
 
-    /** 瓦斯爆炸伤害(深度格数) */
+    /** 瓦斯爆炸的原始威力(深度格数):越深压力越大、炸得越狠;实际扣血再乘 (1 - 车身减伤) */
     static double gasDamage(double rows) {
-        return 6 + rows / 30.0;
+        return 3 + 0.04 * rows + 0.00008 * rows * rows;
     }
 
     /** 瓦斯格偶尔冒一个小气泡:每格 6~10 秒冒一次、持续 0.8 秒,各格错开。返回气泡进度 0~1,不在冒泡时返回 -1 */
@@ -868,11 +868,13 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                         list.add(new MenuItem(String.format("%s  Lv%d   %s → %s   $%s", pad(Upgrades.NAMES[k]), lv + 1,
                             Upgrades.fmt(k, lv), Upgrades.fmt(k, lv + 1), fmtMoney(Upgrades.PRICES[k][lv + 1])),
                             Upgrades.DESC[k] + (k == Upgrades.RADIATOR ? "  最深处车温 " + deepTemp(lv) + "℃ → " + deepTemp(lv + 1) + "℃"
+                                : k == Upgrades.HULL ? "  减伤 " + armorPct(lv) + " → " + armorPct(lv + 1)
                                 : "  下一级:" + Upgrades.TIER_NAMES[lv + 1] + Upgrades.NAMES[k]),
                             p.money >= Upgrades.PRICES[k][lv + 1], () -> buyUpgrade(kind)));
                     } else {
                         list.add(new MenuItem(String.format("%s  Lv7   %s   已满级", pad(Upgrades.NAMES[k]), Upgrades.fmt(k, lv)),
-                            Upgrades.DESC[k] + (k == Upgrades.RADIATOR ? "  最深处车温 " + deepTemp(lv) + "℃" : ""),
+                            Upgrades.DESC[k] + (k == Upgrades.RADIATOR ? "  最深处车温 " + deepTemp(lv) + "℃"
+                                : k == Upgrades.HULL ? "  减伤 " + armorPct(lv) : ""),
                             false, () -> msg("已经是最高级了", Color.LIGHT_GRAY)));
                     }
                 }
@@ -890,6 +892,10 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
         }
         list.add(new MenuItem("离开", "回到地面(Esc 也可以)", true, this::closeShop));
         return list;
+    }
+
+    static String armorPct(int lv) {
+        return Math.round(Upgrades.HULL_ARMOR[lv] * 100) + "%";
     }
 
     /** 散热器在第 lv 档时,最底层的车温 */
@@ -1992,13 +1998,13 @@ final class GamePanel extends JPanel implements KeyListener, ActionListener {
                     "#熔岩(橙红色)",
                     "钻进去会被烧伤,越深伤害越高;「散热器」可以减伤",
                     "#瓦斯(像普通泥土,偶尔冒个小气泡)",
-                    "一挖就爆炸,扣车身并炸开周围的土;「探测器」能提前标出来",
+                    "一挖就爆炸,越深越狠;升级「车身」能减伤,「探测器」能提前标出来",
                     "#摔落",
                     "掉落超过 4 格会摔伤(10 格扣 1.5、20 格扣 4);快落地时按 ↑ 刹车能减轻",
                     "#地热(150 米以下)",
                     "越深车温越高、越费油(最深处约 3.5 倍);深度旁显示车温,「散热器」能降温",
                     "#地震落石(300 米以下)",
-                    "不时会地震:头顶掉灰就是碎石要落下来了,赶紧挪开",
+                    "不时会地震:头顶掉灰就是碎石要落下来了,赶紧挪开;升级「车身」能减伤",
                 };
             default:
                 return new String[0];

@@ -305,7 +305,7 @@ public final class V4Test {
         run(gp, 3);
         check(p.hull < hull0, "碎石砸中车会扣车身");
         double dmg = hull0 - p.hull;
-        check(Math.abs(dmg - (2 + 201 / 80.0)) < 0.2, "同一次地震最多扣一次 2+深度/80,实际 " + dmg);
+        check(Math.abs(dmg - (2 + 201 / 80.0) * (1 - 0.15)) < 0.2, "同一次地震最多扣一次 (2+深度/80)×(1-车身减伤 15%),实际 " + dmg);
         // 50 次地震后地图不变(碎石落地就碎,不会堵路)
         for (int i = 0; i < 50; i++) {
             p.hull = p.maxHull();
@@ -628,8 +628,31 @@ public final class V4Test {
         gp.respawn();
     }
 
-    /** 瓦斯:扣血走 gasDamage;偶尔冒小气泡 */
+    /** 瓦斯:越深威力越大,车身档位越高减伤越多;偶尔冒小气泡 */
     static void gasRework(GamePanel gp) throws Exception {
+        double[] armor = {0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30};
+        boolean armorOk = true;
+        for (int t = 0; t < 7; t++) armorOk &= Math.abs(Upgrades.HULL_ARMOR[t] - armor[t]) < 1e-9;
+        check(armorOk, "车身减伤各档 0/5/10/15/20/25/30%");
+        int bottom = World.ROWS - 3 - World.SURFACE;
+        double[][] raw = {{15, 3.6}, {50, 5.2}, {100, 7.8}, {200, 14.2}, {300, 22.2}, {bottom, 32.7}};
+        boolean rawOk = true;
+        for (double[] rv : raw) rawOk &= Math.abs(GamePanel.gasDamage(rv[0]) - rv[1]) < 0.06;
+        check(rawOk, "瓦斯原始威力:45米 3.6、150米 5.2、300米 7.8、600米 14.2、900米 22.2、最底 32.7");
+        // 各阶段常见车身 vs 所在深度:满血能扛 2 次
+        int[][] stage = {{0, 40}, {1, 80}, {2, 150}, {3, 250}, {4, bottom}, {5, bottom}, {6, bottom}};
+        for (int[] st : stage) {
+            double hull = Upgrades.VALUES[Upgrades.HULL][st[0]], dmg = GamePanel.gasDamage(st[1]) * (1 - Upgrades.HULL_ARMOR[st[0]]);
+            System.out.printf("  车身 %d 档(%d 点)在 %d 米:每次扣 %.1f,扛 %.1f 次%n", st[0] + 1, (int) hull, st[1] * 3, dmg, hull / dmg);
+            check(hull > dmg * 2, "车身 " + (st[0] + 1) + " 档在 " + st[1] * 3 + " 米能扛 2 次瓦斯");
+        }
+        check(Upgrades.VALUES[Upgrades.HULL][0] < GamePanel.gasDamage(200), "车身 1 档跑到 600 米,一次瓦斯就爆车");
+        // 改装厂车身那行写出减伤
+        setAll(gp.p, 1);
+        gp.openShop(Shop.UPGRADE);
+        String hd = gp.shopItems().get(Upgrades.HULL).detail;
+        check(hd.contains("5%") && hd.contains("10%"), "改装厂车身写出减伤变化:" + hd);
+        gp.closeShop();
         // 实际挖到瓦斯扣的就是这个数
         Player p = gp.p;
         setAll(p, 2);
@@ -639,7 +662,7 @@ public final class V4Test {
         double h0 = p.hull;
         gp.tryDigDown();
         run(gp, 3);
-        check(Math.abs(h0 - p.hull - GamePanel.gasDamage(101)) < 1e-6, "挖到瓦斯扣血 = gasDamage(深度):" + (h0 - p.hull));
+        check(Math.abs(h0 - p.hull - GamePanel.gasDamage(101) * 0.9) < 1e-6, "挖到瓦斯扣血 = 威力×(1-车身减伤 10%):" + (h0 - p.hull));
 
         // 气泡:偶尔冒,不是一直冒
         int on = 0, n = 0;

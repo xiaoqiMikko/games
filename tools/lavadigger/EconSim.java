@@ -49,7 +49,7 @@ public final class EconSim {
         return World.diggable(t) || (t == World.ROCK && p.level[Upgrades.DRILL] >= GamePanel.ROCK_DRILL_LEVEL);
     }
 
-    double gasDmg(int d) { return GamePanel.gasDamage(d); }
+    double gasDmg(int d) { return GamePanel.gasDamage(d) * (1 - p.armor()); }
 
     static final int DYNAMITE = Upgrades.ITEM_PRICES[2];
 

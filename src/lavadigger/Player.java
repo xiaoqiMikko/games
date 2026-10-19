@@ -63,6 +63,8 @@ final class Player {
     int cargoMax() { return (int) val(Upgrades.CARGO); }
     double maxHull() { return val(Upgrades.HULL); }
     double radiator() { return val(Upgrades.RADIATOR); }
+    /** 车身减伤:瓦斯爆炸和地震落石扣血乘 (1 - armor) */
+    double armor() { return Upgrades.HULL_ARMOR[level[Upgrades.HULL]]; }
     int probeRadius() { return (int) val(Upgrades.PROBE); }
 
     int cargoCount() {
